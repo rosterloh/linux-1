@@ -218,6 +218,14 @@ static void sdhci_spin_disable_schedule(struct sdhci_host *host)
 #endif
 }
 
+
+#undef spin_lock_irqsave
+#define spin_lock_irqsave(host_lock, flags)      sdhci_spin_lock_irqsave(container_of(host_lock, struct sdhci_host, lock), &flags)
+#define spin_unlock_irqrestore(host_lock, flags) sdhci_spin_unlock_irqrestore(container_of(host_lock, struct sdhci_host, lock), flags)
+
+#define spin_lock(host_lock)   sdhci_spin_lock(container_of(host_lock, struct sdhci_host, lock))
+#define spin_unlock(host_lock) sdhci_spin_unlock(container_of(host_lock, struct sdhci_host, lock))
+
 static void sdhci_clear_set_irqs(struct sdhci_host *host, u32 clear, u32 set)
 {
 	u32 ier;
@@ -1590,7 +1598,7 @@ static void sdhci_do_set_ios(struct sdhci_host *host, struct mmc_ios *ios)
 	else
 		ctrl &= ~SDHCI_CTRL_HISPD;
 
-	if (host->version >= SDHCI_SPEC_300 && !(host->ops->uhs_broken)) {
+	if (host->version >= SDHCI_SPEC_300) {
 		u16 clk, ctrl_2;
 
 		/* In case of UHS-I modes, set High Speed Enable */
