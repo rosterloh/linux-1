@@ -1,7 +1,7 @@
 /******************************************************************************
  *
  * Copyright(c) 2007 - 2011 Realtek Corporation. All rights reserved.
- *
+ *                                        
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
  * published by the Free Software Foundation.
@@ -16,7 +16,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
  *
  *
-******************************************************************************/
+ ******************************************************************************/
 #ifndef	__RTL8192D_DM_H__
 #define __RTL8192D_DM_H__
 //============================================================
@@ -31,15 +31,6 @@
 //============================================================
 
 extern u32 EDCAParam[maxAP][3] ;
-
-#define	OFDM_TABLE_SIZE 	37
-#define	OFDM_TABLE_SIZE_92D 	43
-#define	CCK_TABLE_SIZE		33
-extern u32 OFDMSwingTable[OFDM_TABLE_SIZE_92D] ;
-
-extern u8 CCKSwingTable_Ch1_Ch13[CCK_TABLE_SIZE][8];
-
-extern u8 CCKSwingTable_Ch14 [CCK_TABLE_SIZE][8];
 
 //============================================================
 // structure and define
@@ -66,14 +57,14 @@ typedef struct _Dynamic_Power_Saving_
 	u8		CurRFState;
 
 	//int		Rssi_val_min;
-
+	
 }PS_T,*pPS_T;
 
 typedef struct _Dynamic_Initial_Gain_Threshold_
 {
 	u8		Dig_Enable_Flag;
 	u8		Dig_Ext_Port_Stage;
-
+	
 	int		RssiLowThresh;
 	int		RssiHighThresh;
 
@@ -101,7 +92,9 @@ typedef struct _Dynamic_Initial_Gain_Threshold_
 	u8		LargeFAHit;
 	u8		ForbiddenIGI;
 	u32		Recover_cnt;
+	u8		rx_gain_range_min_nolink;
 }DIG_T,*pDIG_T;
+
 typedef enum tag_Dynamic_Init_Gain_Operation_Type_Definition
 {
 	DIG_TYPE_THRESH_HIGH	= 0,
@@ -148,7 +141,7 @@ typedef enum tag_DIG_EXT_PORT_ALGO_Definition
 
 typedef enum tag_DIG_Connect_Definition
 {
-	DIG_STA_DISCONNECT = 0,
+	DIG_STA_DISCONNECT = 0,	
 	DIG_STA_CONNECT = 1,
 	DIG_STA_BEFORE_CONNECT = 2,
 	DIG_MultiSTA_DISCONNECT = 3,
@@ -176,8 +169,8 @@ typedef enum tag_DIG_Connect_Definition
 #define		DM_DIG_FA_TH2				0x400//0x200
 //this is for 92d
 #define		DM_DIG_FA_TH0_92D			0x100
-#define		DM_DIG_FA_TH1_92D			0x400
-#define		DM_DIG_FA_TH2_92D			0x600
+#define		DM_DIG_FA_TH1_92D			0x150
+#define		DM_DIG_FA_TH2_92D			0x250
 
 #define		DM_DIG_BACKOFF_MAX			12
 #define		DM_DIG_BACKOFF_MIN			(-4)
@@ -200,7 +193,7 @@ typedef enum tag_DIG_Connect_Definition
 #define		TX_POWER_NEAR_FIELD_THRESH_LVL2	74
 #define		TX_POWER_NEAR_FIELD_THRESH_LVL1	67
 
-#define		TxHighPwrLevel_Normal		0
+#define		TxHighPwrLevel_Normal		0	
 #define		TxHighPwrLevel_Level1		1
 #define		TxHighPwrLevel_Level2		2
 #define		TxHighPwrLevel_BT1			3
@@ -218,14 +211,14 @@ typedef struct _RATE_ADAPTIVE
 {
 	u8				RateAdaptiveDisabled;
 	u8				RATRState;
-	u16				reserve;
-
+	u16				reserve;	
+	
 	u32				HighRSSIThreshForRA;
 	u32				High2LowRSSIThreshForRA;
 	u8				Low2HighRSSIThreshForRA40M;
-	u32				LowRSSIThreshForRA40M;
+	u32				LowRSSIThreshForRA40M;	
 	u8				Low2HighRSSIThreshForRA20M;
-	u32				LowRSSIThreshForRA20M;
+	u32				LowRSSIThreshForRA20M;	
 	u32				UpperRSSIThresholdRATR;
 	u32				MiddleRSSIThresholdRATR;
 	u32				LowRSSIThresholdRATR;
@@ -236,7 +229,7 @@ typedef struct _RATE_ADAPTIVE
 	u32				PingRSSIThreshForRA;//cosa add for Netcore long range ping issue
 	u32				LastRATR;
 	u8				PreRATRState;
-
+	
 } RATE_ADAPTIVE, *PRATE_ADAPTIVE;
 
 typedef enum tag_SW_Antenna_Switch_Definition
@@ -247,7 +240,7 @@ typedef enum tag_SW_Antenna_Switch_Definition
 }DM_SWAS_E;
 
 // 20100514 Joseph: Add definition for antenna switching test after link.
-// This indicates two different the steps.
+// This indicates two different the steps. 
 // In SWAW_STEP_PEAK, driver needs to switch antenna and listen to the signal on the air.
 // In SWAW_STEP_DETERMINE, driver just compares the signal captured in SWAW_STEP_PEAK
 // with original RSSI to determine if it is necessary to switch antenna.
@@ -262,7 +255,7 @@ typedef enum tag_SW_Antenna_Switch_Definition
 //=============================
 //Neil Chen---2011--06--15--
 //==============================
-//3 PathDiv
+//3 PathDiv 
 typedef struct _SW_Antenna_Switch_
 {
 	u8		try_flag;
@@ -280,7 +273,7 @@ typedef struct _SW_Antenna_Switch_
 }SWAT_T, *pSWAT_T;
 //========================================
 
-struct 	dm_priv
+struct 	dm_priv	
 {
 	u8	DM_Type;
 	u8	DMFlag, DMFlag_tmp;
@@ -292,8 +285,8 @@ struct 	dm_priv
 
 	PS_T	DM_PSTable;
 
-	FALSE_ALARM_STATISTICS	FalseAlmCnt;
-
+	FALSE_ALARM_STATISTICS	FalseAlmCnt;	
+	
 	//for rate adaptive, in fact,  88c/92c fw will handle this
 	u8	bUseRAMask;
 	RATE_ADAPTIVE	RateAdaptive;
@@ -304,16 +297,25 @@ struct 	dm_priv
 	int	EntryMaxUndecoratedSmoothedPWDB;
 	int	MinUndecoratedPWDBForDM;
 	int	LastMinUndecoratedPWDBForDM;
+#ifdef CONFIG_DUALMAC_CONCURRENT
+	int	RssiValMinForAnotherMacOfDMSP;
+	u32	CurDigValueForAnotherMacOfDMSP;
+	BOOLEAN		bWriteDigForAnotherMacOfDMSP;
+	BOOLEAN		bChangeCCKPDStateForAnotherMacOfDMSP;
+	u8	CurCCKPDStateForAnotherMacOfDMSP;
+	BOOLEAN		bChangeTxHighPowerLvlForAnotherMacOfDMSP;
+	u8	CurTxHighLvlForAnotherMacOfDMSP;
+#endif
 
 	//for High Power
 	u8	bDynamicTxPowerEnable;
 	u8	LastDTPLvl;
 	u8	DynamicTxHighPowerLvl;//Add by Jacken Tx Power Control for Near/Far Range 2008/03/06
-
+		
 	//for tx power tracking
 	u8	bTXPowerTracking;
 	u8	TXPowercount;
-	u8	bTXPowerTrackingInit;
+	u8	bTXPowerTrackingInit;	
 	u8	TxPowerTrackControl;	//for mp mode, turn off txpwrtracking as default
 	u8	TM_Trigger;
 
@@ -364,17 +366,6 @@ struct 	dm_priv
 
 	SWAT_T DM_SWAT_Table;
 
-       //Neil Chen----2011--06--23-----
-       //3 Path Diversity
-	BOOLEAN		bPathDiv_Enable;	//For 92D Non-interrupt Antenna Diversity by Neil ,add by wl.2011.07.19
-	BOOLEAN		RSSI_test;
-	s32			RSSI_sum_A;
-	s32			RSSI_cnt_A;
-	s32			RSSI_sum_B;
-	s32			RSSI_cnt_B;
-	struct sta_info	*RSSI_target;
-	_timer		PathDivSwitchTimer;
-
 	//for TxPwrTracking
 	int	RegE94;
 	int 	RegE9C;
@@ -392,6 +383,21 @@ struct 	dm_priv
 
 	// Add for Reading Initial Data Rate SEL Register 0x484 during watchdog. Using for fill tx desc. 2011.3.21 by Thomas
 	u8	INIDATA_RATE[32];
+
+#ifdef CONFIG_DM_ADAPTIVITY
+	/* Ported from ODM, for ESTI Adaptivity test */
+	s8 TH_L2H_ini;
+	s8 TH_EDCCA_HL_diff;
+	s8 IGI_Base;
+	u8 IGI_target;
+	bool ForceEDCCA;
+	u8 AdapEn_RSSI;
+	s8 Force_TH_H;
+	s8 Force_TH_L;
+	u8 IGI_LowerBound;
+
+	bool	bPreEdccaEnable;
+#endif
 };
 
 

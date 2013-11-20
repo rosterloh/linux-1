@@ -1,7 +1,7 @@
 /******************************************************************************
  *
  * Copyright(c) 2007 - 2011 Realtek Corporation. All rights reserved.
- *
+ *                                        
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
  * published by the Free Software Foundation.
@@ -16,8 +16,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
  *
  *
-
-******************************************************************************/
+ ******************************************************************************/
 #ifndef __RTW_LED_H_
 #define __RTW_LED_H_
 
@@ -39,29 +38,29 @@ typedef enum _LED_CTL_MODE{
         LED_CTL_START_WPS = 9,
         LED_CTL_STOP_WPS = 10,
         LED_CTL_START_WPS_BOTTON = 11, //added for runtop
-        LED_CTL_STOP_WPS_FAIL = 12, //added for ALPHA
+        LED_CTL_STOP_WPS_FAIL = 12, //added for ALPHA	
 	 LED_CTL_STOP_WPS_FAIL_OVERLAP = 13, //added for BELKIN
 }LED_CTL_MODE;
 
 
-#ifdef CONFIG_USB_HCI
+#if defined(CONFIG_USB_HCI) || defined(CONFIG_SDIO_HCI)
 //================================================================================
 // LED object.
 //================================================================================
 
 typedef enum _LED_STATE_871x{
 	LED_UNKNOWN = 0,
-	LED_ON = 1,
-	LED_OFF = 2,
+	RTW_LED_ON = 1,
+	RTW_LED_OFF = 2,
 	LED_BLINK_NORMAL = 3,
 	LED_BLINK_SLOWLY = 4,
 	LED_POWER_ON_BLINK = 5,
 	LED_SCAN_BLINK = 6, // LED is blinking during scanning period, the # of times to blink is depend on time for scanning.
 	LED_NO_LINK_BLINK = 7, // LED is blinking during no link state.
 	LED_BLINK_StartToBlink = 8,// Customzied for Sercomm Printer Server case
-	LED_BLINK_WPS = 9,	// LED is blinkg during WPS communication
+	LED_BLINK_WPS = 9,	// LED is blinkg during WPS communication	
 	LED_TXRX_BLINK = 10,
-	LED_BLINK_WPS_STOP = 11,	//for ALPHA
+	LED_BLINK_WPS_STOP = 11,	//for ALPHA	
 	LED_BLINK_WPS_STOP_OVERLAP = 12,	//for BELKIN
 }LED_STATE_871x;
 
@@ -93,12 +92,12 @@ typedef struct _LED_871x{
 	u8					bLedStartToLinkBlinkInProgress;
 	u8					bLedScanBlinkInProgress;
 	u8					bLedWPSBlinkInProgress;
-
+	
 	u32					BlinkTimes; // Number of times to toggle led state for blinking.
-	LED_STATE_871x		BlinkingLedState; // Next state for blinking, either LED_ON or LED_OFF are.
+	LED_STATE_871x		BlinkingLedState; // Next state for blinking, either RTW_LED_ON or RTW_LED_OFF are.
 
 	_timer				BlinkTimer; // Timer object for led blinking.
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,0)
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,5,0)|| defined PLATFORM_FREEBSD
 	_workitem			BlinkWorkItem; // Workitem used by BlinkTimer to manipulate H/W to blink LED.
 #endif
 } LED_871x, *PLED_871x;
@@ -127,14 +126,14 @@ typedef	enum _LED_STRATEGY_871x{
 
 typedef	enum _LED_STATE_871x{
 	LED_UNKNOWN = 0,
-	LED_ON = 1,
-	LED_OFF = 2,
+	RTW_LED_ON = 1,
+	RTW_LED_OFF = 2,
 	LED_BLINK_NORMAL = 3,
 	LED_BLINK_SLOWLY = 4,
 	LED_POWER_ON_BLINK = 5,
 	LED_SCAN_BLINK = 6, // LED is blinking during scanning period, the # of times to blink is depend on time for scanning.
 	LED_NO_LINK_BLINK = 7, // LED is blinking during no link state.
-	LED_BLINK_StartToBlink = 8,
+	LED_BLINK_StartToBlink = 8, 
 	LED_BLINK_TXRX = 9,
 	LED_BLINK_RUNTOP = 10, // Customized for RunTop
 	LED_BLINK_CAMEO = 11,
@@ -160,9 +159,13 @@ typedef struct _LED_871x{
 
 	u8					bLedSlowBlinkInProgress;//added by vivi, for led new mode
 	u32					BlinkTimes; // Number of times to toggle led state for blinking.
-	LED_STATE_871x		BlinkingLedState; // Next state for blinking, either LED_ON or LED_OFF are.
+	LED_STATE_871x		BlinkingLedState; // Next state for blinking, either RTW_LED_ON or RTW_LED_OFF are.
 
 	_timer				BlinkTimer; // Timer object for led blinking.
+	
+	u8					bLedLinkBlinkInProgress;
+	u8					bLedNoLinkBlinkInProgress;
+	u8 					bLedScanBlinkInProgress;
 } LED_871x, *PLED_871x;
 
 
@@ -180,7 +183,7 @@ typedef	enum _LED_STRATEGY_871x{
 	SW_LED_MODE6, //added by vivi, for led new mode, PRONET
 	SW_LED_MODE7, //added by chiyokolin, for Lenovo, PCI Express Minicard Spec Rev.1.2 spec
 	SW_LED_MODE8, //added by chiyokolin, for QMI
-	SW_LED_MODE9, //added by chiyokolin, for BITLAND, PCI Express Minicard Spec Rev.1.1
+	SW_LED_MODE9, //added by chiyokolin, for BITLAND, PCI Express Minicard Spec Rev.1.1 
 	SW_LED_MODE10, //added by chiyokolin, for Edimax-ASUS
 	HW_LED, // HW control 2 LEDs, LED0 and LED1 (there are 4 different control modes)
 }LED_STRATEGY_871x, *PLED_STRATEGY_871x;
@@ -211,3 +214,4 @@ struct led_priv{
 extern void BlinkHandler(PLED_871x	 pLed);
 
 #endif //__RTW_LED_H_
+

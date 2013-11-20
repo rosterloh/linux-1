@@ -1,7 +1,7 @@
 /******************************************************************************
  *
  * Copyright(c) 2007 - 2011 Realtek Corporation. All rights reserved.
- *
+ *                                        
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
  * published by the Free Software Foundation.
@@ -16,8 +16,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
  *
  *
-
-******************************************************************************/
+ ******************************************************************************/
 #ifndef _RTW_IOCTL_H_
 #define _RTW_IOCTL_H_
 
@@ -66,9 +65,9 @@
 
 #define DEBUG_OID(dbg, str)     		\
        if((!dbg))				    			\
-	{					    			\
+      	{					    			\
 	   RT_TRACE(_module_rtl871x_ioctl_c_,_drv_info_,("%s(%d): %s", __FUNCTION__, __LINE__, str));	\
-	}
+      	}			
 
 
 enum oid_type
@@ -80,30 +79,31 @@ enum oid_type
 struct oid_funs_node {
 	unsigned int oid_start; //the starting number for OID
 	unsigned int oid_end; //the ending number for OID
-	struct oid_obj_priv *node_array;
+	struct oid_obj_priv *node_array; 
 	unsigned int array_sz; //the size of node_array
-	int query_counter; //count the number of query hits for this segment
-	int set_counter; //count the number of set hits for this segment
+	int query_counter; //count the number of query hits for this segment  
+	int set_counter; //count the number of set hits for this segment  
 };
 
 struct oid_par_priv
 {
-	void				*adapter_context;
-	NDIS_OID		oid;
-	void*			information_buf;
+	void		*adapter_context;
+	NDIS_OID	oid;
+	void		*information_buf;
 	u32		information_buf_len;
-	u32*	bytes_rw;
-	u32*	bytes_needed;
+	u32		*bytes_rw;
+	u32		*bytes_needed;
 	enum oid_type	type_of_oid;
-	u32 		dbg;
+	u32		dbg;
 };
 
 struct oid_obj_priv {
-	unsigned char	dbg; // 0: without OID debug message  1: with OID debug message
-	NDIS_STATUS (*oidfuns)(struct oid_par_priv *poid_par_priv);
+	unsigned char	dbg; // 0: without OID debug message  1: with OID debug message 
+	NDIS_STATUS (*oidfuns)(struct oid_par_priv *poid_par_priv);	
 };
 
-#ifdef CONFIG_MP_INCLUDED
+#if (defined(CONFIG_MP_INCLUDED) && defined(_RTW_MP_IOCTL_C_)) || \
+	(defined(PLATFORM_WINDOWS) && defined(_RTW_IOCTL_RTL_C_))
 static NDIS_STATUS oid_null_function(struct oid_par_priv* poid_par_priv)
 {
 	_func_enter_;
@@ -235,7 +235,7 @@ NDIS_STATUS oid_802_11_bssid_list_hdl(struct oid_par_priv* poid_par_priv);
 NDIS_STATUS oid_802_11_statistics_hdl(struct oid_par_priv* poid_par_priv);
 
 
-//OID Handler for Segment ED
+//OID Handler for Segment ED 
 NDIS_STATUS oid_rt_mh_vender_id_hdl(struct oid_par_priv* poid_par_priv);
 
 void Set_802_3_MULTICAST_LIST(ADAPTER *pAdapter, UCHAR *MCListbuf, ULONG MCListlen, BOOLEAN bAcceptAllMulticast);
@@ -243,10 +243,8 @@ void Set_802_3_MULTICAST_LIST(ADAPTER *pAdapter, UCHAR *MCListbuf, ULONG MCListl
 #endif// end of PLATFORM_WINDOWS
 
 
-#ifdef PLATFORM_LINUX
-
+#if defined(PLATFORM_LINUX) && defined(CONFIG_WIRELESS_EXT)
 extern struct iw_handler_def  rtw_handlers_def;
-
 #endif
 
 extern	NDIS_STATUS drv_query_info(
@@ -268,3 +266,4 @@ extern	NDIS_STATUS 	drv_set_info(
 	);
 
 #endif // #ifndef __INC_CEINFO_
+

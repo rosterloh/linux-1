@@ -16,8 +16,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
  *
  *
-
-******************************************************************************/
+ ******************************************************************************/
 #ifndef _RTW_RECV_H_
 #define _RTW_RECV_H_
 
@@ -61,7 +60,7 @@ struct recv_reorder_ctrl
 	u8 enable;
 	u16 indicate_seq;//=wstart_b, init_value=0xffff
 	u16 wend_b;
-       u8 wsize_b;
+	u8 wsize_b;
 	_queue pending_recvframe_queue;
 	_timer reordering_ctrl_timer;
 };
@@ -97,48 +96,52 @@ struct smooth_rssi_data {
 };
 
 struct signal_stat {
-	u8	update_req;		//used to indicate
+	u8	update_req;		//used to indicate 
 	u8	avg_val;		//avg of valid elements
 	u32	total_num;		//num of valid elements
-	u32	total_val;		//sum of valid elements
+	u32	total_val;		//sum of valid elements	
 };
 
-struct rx_pkt_attrib	{
+struct rx_pkt_attrib
+{
 	u16	pkt_len;
 	u8	physt;
 	u8	drvinfo_sz;
 	u8	shift_sz;
-	u8 	amsdu;
-	u8	order;
-	u8	qos;
+	u8	hdrlen; //the WLAN Header Len
 	u8 	to_fr_ds;
+	u8 	amsdu;
+	u8	qos;
+	u8	priority;
+	u8	pw_save;
+	u8	mdata;
 	u16	seq_num;
 	u8	frag_num;
-	u8	pw_save;
 	u8	mfrag;
-	u8	mdata;
+	u8	order;
 	u8	privacy; //in frame_ctrl field
 	u8	bdecrypted;
-	int	hdrlen;		//the WLAN Header Len
-	int	iv_len;
-	int	icv_len;
-	u8	encrypt;		//when 0 indicate no encrypt. when non-zero, indicate the encrypt algorith
-	u8	priority;
-	u8	ack_policy;
+	u8	encrypt; //when 0 indicate no encrypt. when non-zero, indicate the encrypt algorith
+	u8	iv_len;
+	u8	icv_len;
 	u8	crc_err;
 	u8	icv_err;
+
+	u16 eth_type;
 
 	u8 	dst[ETH_ALEN];
 	u8 	src[ETH_ALEN];
 	u8 	ta[ETH_ALEN];
 	u8 	ra[ETH_ALEN];
 	u8 	bssid[ETH_ALEN];
-#ifdef CONFIG_TCP_CSUM_OFFLOAD_RX
+	
+	u8 ack_policy;
+	
+//#ifdef CONFIG_TCP_CSUM_OFFLOAD_RX
 	u8	tcpchk_valid; // 0: invalid, 1: valid
 	u8	ip_chkrpt; //0: incorrect, 1: correct
 	u8	tcp_chkrpt; //0: incorrect, 1: correct
-#endif
-
+//#endif
 	u8 	key_index;
 
 	u8	mcs_rate;
@@ -159,7 +162,7 @@ struct rx_pkt_attrib	{
 #define SN_EQUAL(a, b)	(a == b)
 //#define REORDER_WIN_SIZE	128
 //#define REORDER_ENTRY_NUM	128
-#define REORDER_WAIT_TIME	(30) // (ms)
+#define REORDER_WAIT_TIME	(50) // (ms)
 
 #define RECVBUFF_ALIGN_SZ 8
 
@@ -190,8 +193,8 @@ struct recv_stat
 #define EOR BIT(30)
 
 #ifdef CONFIG_PCI_HCI
-#define PCI_MAX_RX_QUEUE		2// MSDU packet queue, Rx Command Queue
-#define PCI_MAX_RX_COUNT		64
+#define PCI_MAX_RX_QUEUE		1// MSDU packet queue, Rx Command Queue
+#define PCI_MAX_RX_COUNT		128
 
 struct rtw_rx_ring {
 	struct recv_stat	*desc;
@@ -207,9 +210,9 @@ accesser of recv_priv: rtw_recv_entry(dispatch / passive level); recv_thread(pas
 
 using enter_critical section to protect
 */
-struct recv_priv {
-
-	  _lock	lock;
+struct recv_priv
+{
+  	  _lock	lock;
 
 #ifdef CONFIG_RECV_THREAD_MODE
 	_sema	recv_sema;
@@ -219,6 +222,7 @@ struct recv_priv {
 	//_queue	blk_strms[MAX_RX_NUMBLKS];    // keeping the block ack frame until return ack
 	_queue	free_recv_queue;
 	_queue	recv_pending_queue;
+	_queue	uc_swdec_pending_queue;
 
 
 	u8 *pallocated_frame_buf;
@@ -265,16 +269,25 @@ struct recv_priv {
 #endif
 
 #endif
-#ifdef PLATFORM_LINUX
+#if defined(PLATFORM_LINUX) || defined(PLATFORM_FREEBSD)
+#ifdef PLATFORM_FREEBSD
+	struct task irq_prepare_beacon_tasklet;
+	struct task recv_tasklet;
+#else //PLATFORM_FREEBSD
 	struct tasklet_struct irq_prepare_beacon_tasklet;
 	struct tasklet_struct recv_tasklet;
+#endif //PLATFORM_FREEBSD
 	struct sk_buff_head free_recv_skb_queue;
 	struct sk_buff_head rx_skb_queue;
+#ifdef CONFIG_RX_INDICATE_QUEUE
+	struct task rx_indicate_tasklet;
+	struct ifqueue rx_indicate_queue;
+#endif	// CONFIG_RX_INDICATE_QUEUE
 
 #ifdef CONFIG_USE_USB_BUFFER_ALLOC_RX
 	_queue	recv_buf_pending_queue;
 #endif	// CONFIG_USE_USB_BUFFER_ALLOC_RX
-#endif
+#endif //defined(PLATFORM_LINUX) || defined(PLATFORM_FREEBSD)
 
 	u8 *pallocated_recv_buf;
 	u8 *precv_buf;    // 4 alignment
@@ -282,10 +295,7 @@ struct recv_priv {
 	u32	free_recv_buf_queue_cnt;
 
 #ifdef CONFIG_SDIO_HCI
-        u8 bytecnt_buf[512];
-	//u8 * recvbuf_drop_ori;
-	//u8 * recvbuf_drop;
-	struct recv_buf *recvbuf_drop;
+	_queue	recv_buf_pending_queue;
 #endif
 
 #ifdef CONFIG_PCI_HCI
@@ -318,6 +328,12 @@ struct recv_priv {
 	struct smooth_rssi_data signal_strength_data;
 #endif //CONFIG_NEW_SIGNAL_STAT_PROCESS
 
+	u32 recvbuf_skb_alloc_fail_cnt;
+	u32 recvbuf_null_cnt;
+	u32 read_port_complete_EINPROGRESS_cnt;
+	u32 read_port_complete_other_urb_err_cnt;
+	
+
 };
 
 #ifdef CONFIG_NEW_SIGNAL_STAT_PROCESS
@@ -326,7 +342,7 @@ struct recv_priv {
 
 struct sta_recv_priv {
 
-    _lock	lock;
+	_lock	lock;
 	sint	option;
 
 	//_queue	blk_strms[MAX_RX_NUMBLKS];
@@ -341,26 +357,28 @@ struct sta_recv_priv {
 };
 
 
-struct recv_buf{
-
+struct recv_buf
+{
 	_list list;
 
 	_lock recvbuf_lock;
 
 	u32	ref_cnt;
 
-	_adapter  *adapter;
+	PADAPTER adapter;
 
-#ifdef CONFIG_SDIO_HCI
-#ifdef PLATFORM_OS_XP
-	PMDL mdl_ptr;
-#endif
-	u8	cmd_fail;
-#endif
+	u8	*pbuf;
+	u8	*pallocated_buf;
+
+	u32	len;
+	u8	*phead;
+	u8	*pdata;
+	u8	*ptail;
+	u8	*pend;
 
 #ifdef CONFIG_USB_HCI
 
-	#if defined(PLATFORM_OS_XP)||defined(PLATFORM_LINUX)
+	#if defined(PLATFORM_OS_XP)||defined(PLATFORM_LINUX)||defined(PLATFORM_FREEBSD)
 	PURB	purb;
 	dma_addr_t dma_transfer_addr;	/* (in) dma addr for transfer_buffer */
 	u32 alloc_sz;
@@ -383,16 +401,10 @@ struct recv_buf{
 	_pkt *pskb;
 	u8	reuse;
 #endif
-
-	uint	len;
-	u8	*phead;
-	u8	*pdata;
-	u8	*ptail;
-	u8	*pend;
-
-	u8	*pbuf;
-	u8	*pallocated_buf;
-
+#ifdef PLATFORM_FREEBSD //skb solution
+	struct sk_buff *pskb;
+	u8	reuse;
+#endif //PLATFORM_FREEBSD //skb solution
 };
 
 
@@ -411,11 +423,16 @@ struct recv_buf{
 	len = (unsigned int )(tail - data);
 
 */
-struct recv_frame_hdr{
-
+struct recv_frame_hdr
+{
 	_list	list;
+#ifndef CONFIG_BSD_RX_USE_MBUF
+	struct sk_buff	 *pkt;
+	struct sk_buff	 *pkt_newalloc;
+#else // CONFIG_BSD_RX_USE_MBUF
 	_pkt	*pkt;
 	_pkt *pkt_newalloc;
+#endif // CONFIG_BSD_RX_USE_MBUF
 
 	_adapter  *adapter;
 
@@ -456,13 +473,19 @@ union recv_frame{
 };
 
 
+extern union recv_frame *_rtw_alloc_recvframe (_queue *pfree_recv_queue);  //get a free recv_frame from pfree_recv_queue
 extern union recv_frame *rtw_alloc_recvframe (_queue *pfree_recv_queue);  //get a free recv_frame from pfree_recv_queue
 extern void rtw_init_recvframe(union recv_frame *precvframe ,struct recv_priv *precvpriv);
 extern int	 rtw_free_recvframe(union recv_frame *precvframe, _queue *pfree_recv_queue);
-extern union recv_frame *rtw_dequeue_recvframe (_queue *queue);
-extern int	rtw_enqueue_recvframe(union recv_frame *precvframe, _queue *queue);
-extern void rtw_free_recvframe_queue(_queue *pframequeue,  _queue *pfree_recv_queue);
 
+#define rtw_dequeue_recvframe(queue) rtw_alloc_recvframe(queue)
+extern int _rtw_enqueue_recvframe(union recv_frame *precvframe, _queue *queue);
+extern int rtw_enqueue_recvframe(union recv_frame *precvframe, _queue *queue);
+
+extern void rtw_free_recvframe_queue(_queue *pframequeue,  _queue *pfree_recv_queue);
+u32 rtw_free_uc_swdec_pending_queue(_adapter *adapter);
+
+sint rtw_enqueue_recvbuf_to_head(struct recv_buf *precvbuf, _queue *queue);
 sint rtw_enqueue_recvbuf(struct recv_buf *precvbuf, _queue *queue);
 struct recv_buf *rtw_dequeue_recvbuf (_queue *queue);
 
@@ -554,7 +577,7 @@ __inline static u8 *recvframe_put(union recv_frame *precvframe, sint sz)
 
 	//used for append sz bytes from ptr to rx_tail, update rx_tail and return the updated rx_tail to the caller
 	//after putting, rx_tail must be still larger than rx_end.
-	unsigned char * prev_rx_tail;
+ 	unsigned char * prev_rx_tail;
 
 	if(precvframe==NULL)
 		return NULL;
@@ -623,9 +646,8 @@ __inline static union recv_frame *rxmem_to_recvframe(u8 *rxmem)
 	//from any given member of recv_frame.
 	// rxmem indicates the any member/address in recv_frame
 
-	//return (union recv_frame*)(((uint)rxmem>>RXFRAME_ALIGN) <<RXFRAME_ALIGN) ;
-	//return (union recv_frame*)(((SIZE_PTR)rxmem >> RXFRAME_ALIGN) << RXFRAME_ALIGN);
-	return (union recv_frame*)(((ulong)rxmem>>RXFRAME_ALIGN) <<RXFRAME_ALIGN) ;
+	return (union recv_frame*)(((SIZE_PTR)rxmem >> RXFRAME_ALIGN) << RXFRAME_ALIGN);
+
 }
 
 __inline static union recv_frame *pkt_to_recvframe(_pkt *pkt)
@@ -686,6 +708,7 @@ __inline static u8 query_rx_pwr_percentage(s8 antpower )
 		return	(100+antpower);
 	}
 }
+
 __inline static s32 translate_percentage_to_dbm(u32 SignalStrengthIndex)
 {
 	s32	SignalPower; // in dBm.
@@ -705,3 +728,4 @@ extern void _rtw_init_sta_recv_priv(struct sta_recv_priv *psta_recvpriv);
 extern void  mgt_dispatcher(_adapter *padapter, union recv_frame *precv_frame);
 
 #endif
+

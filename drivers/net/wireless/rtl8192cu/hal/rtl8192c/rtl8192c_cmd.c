@@ -1,7 +1,7 @@
 /******************************************************************************
  *
  * Copyright(c) 2007 - 2011 Realtek Corporation. All rights reserved.
- *
+ *                                        
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
  * published by the Free Software Foundation.
@@ -16,8 +16,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
  *
  *
-
-******************************************************************************/
+ ******************************************************************************/
 #define _RTL8192C_CMD_C_
 
 #include <drv_conf.h>
@@ -33,115 +32,62 @@
 #include <rtl8192c_hal.h>
 
 
-#if 0
-static BOOLEAN
-CheckWriteMSG(
-	IN	PADAPTER		Adapter,
-	IN	u8		BoxNum
-)
-{
-	u8	valHMETFR;
-	BOOLEAN	Result = _FALSE;
-
-	valHMETFR = rtw_read8(Adapter, REG_HMETFR);
-
-	//DbgPrint("CheckWriteH2C(): Reg[0x%2x] = %x\n",REG_HMETFR, valHMETFR);
-
-	if(((valHMETFR>>BoxNum)&BIT0) == 1)
-		Result = _TRUE;
-
-	return Result;
-
-}
-
-static BOOLEAN CheckFwReadLastMSG(
-	IN	PADAPTER		Adapter,
-	IN	u8		BoxNum
-)
-{
-	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(Adapter);
-	u8	valHMETFR, valMCUTST_1;
-	BOOLEAN	 Result = _FALSE;
-
-	valHMETFR = rtw_read8(Adapter, REG_HMETFR);
-	valMCUTST_1 = rtw_read8(Adapter, (REG_MCUTST_1+BoxNum));
-
-	//DbgPrint("REG[%x] = %x, REG[%x] = %x\n",
-	//	REG_HMETFR, valHMETFR, REG_MCUTST_1+BoxNum, valMCUTST_1 );
-
-	// Do not seperate to 91C and 88C, we use the same setting. Suggested by SD4 Filen. 2009.12.03.
-	if(IS_NORMAL_CHIP(pHalData->VersionID))
-	{
-		if(((valHMETFR>>BoxNum)&BIT0) == 0)
-			Result = _TRUE;
-	}
-	else
-	{
-		if((((valHMETFR>>BoxNum)&BIT0) == 0) && (valMCUTST_1 == 0))
-		{
-			Result = _TRUE;
-		}
-	}
-
-	return Result;
-}
-#endif
-
-
 #define RTL92C_MAX_H2C_BOX_NUMS	4
 #define RTL92C_MAX_CMD_LEN	5
 #define MESSAGE_BOX_SIZE		4
 #define EX_MESSAGE_BOX_SIZE	2
 
-static u8 _is_fw_read_cmd_down(_adapter* padapter, u8 isvern, u8 msgbox_num)
+static u8 _is_fw_read_cmd_down(_adapter* padapter, u8 msgbox_num)
 {
 	u8	read_down = _FALSE;
 	int 	retry_cnts = 100;
-
+	
 	u8 valid;
 
 //	DBG_8192C(" _is_fw_read_cmd_down ,isnormal_chip(%x),reg_1cc(%x),msg_box(%d)...\n",isvern,rtw_read8(padapter,REG_HMETFR),msgbox_num);
-
+	
 	do{
 		valid = rtw_read8(padapter,REG_HMETFR) & BIT(msgbox_num);
-		if(isvern){
-			if(0 == valid ){
-				read_down = _TRUE;
-			}
-		}
-		else{
-			if((0 == valid) && (0 == rtw_read8(padapter, REG_MCUTST_1+msgbox_num))){
-				read_down = _TRUE;
-			}
-		}
+		if(0 == valid ){
+			read_down = _TRUE;
+		}			
 	}while( (!read_down) && (retry_cnts--));
 
 	return read_down;
-
+	
 }
 
 
 /*****************************************
 * H2C Msg format :
-*| 31 - 8		|7		| 6 - 0	|
+*| 31 - 8		|7		| 6 - 0	|	
 *| h2c_msg 	|Ext_bit	|CMD_ID	|
 *
 ******************************************/
 int rtl8192c_FillH2CCmd(_adapter* padapter, u8 ElementID, u32 CmdLen, u8* pCmdBuffer)
 {
-#if 1
 	u8	bcmd_down = _FALSE;
 	int 	retry_cnts = 100;
 	u8	h2c_box_num;
 	u32	msgbox_addr;
 	u32  msgbox_ex_addr;
 	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(padapter);
-	u8	isnchip =IS_NORMAL_CHIP(pHalData->VersionID);
 	u32	h2c_cmd = 0;
 	u16	h2c_cmd_ex = 0;
 	int ret = _FAIL;
 
-	_func_enter_;
+_func_enter_;	
+
+	padapter = GET_PRIMARY_ADAPTER(padapter);		
+	pHalData = GET_HAL_DATA(padapter);
+
+	if(padapter->bFWReady == _FALSE)
+	{
+		DBG_8192C("FillH2CCmd(): return H2C cmd because fw is not ready\n");
+		return ret;
+	}
+
+	_enter_critical_mutex(&(adapter_to_dvobj(padapter)->h2c_fwcmd_mutex), NULL);
 
 	if(!pCmdBuffer){
 		goto exit;
@@ -153,7 +99,7 @@ int rtl8192c_FillH2CCmd(_adapter* padapter, u8 ElementID, u32 CmdLen, u8* pCmdBu
 	do{
 		h2c_box_num = pHalData->LastHMEBoxNum;
 
-		if(!_is_fw_read_cmd_down(padapter, isnchip, h2c_box_num)){
+		if(!_is_fw_read_cmd_down(padapter, h2c_box_num)){
 			DBG_8192C(" fw read cmd failed...\n");
 			goto exit;
 		}
@@ -179,14 +125,6 @@ int rtl8192c_FillH2CCmd(_adapter* padapter, u8 ElementID, u32 CmdLen, u8* pCmdBu
 		h2c_cmd = cpu_to_le32( h2c_cmd );
 		rtw_write32(padapter,msgbox_addr, h2c_cmd);
 
-		if(!isnchip){//for Test chip
-			if(! (rtw_read8(padapter, REG_HMETFR) & BIT(h2c_box_num))){
-				DBG_8192C("Chip test  - check fw write failed, write again..\n");
-				continue;
-			}
-			// Fill H2C protection register.
-			rtw_write8(padapter,REG_MCUTST_1+h2c_box_num, 0xFF);
-		}
 		bcmd_down = _TRUE;
 
 	//	DBG_8192C("MSG_BOX:%d,CmdLen(%d), reg:0x%x =>h2c_cmd:0x%x, reg:0x%x =>h2c_cmd_ex:0x%x ..\n"
@@ -197,193 +135,28 @@ int rtl8192c_FillH2CCmd(_adapter* padapter, u8 ElementID, u32 CmdLen, u8* pCmdBu
 	}while((!bcmd_down) && (retry_cnts--));
 /*
 	if(bcmd_down)
-		DBG_8192C("H2C Cmd exe down. \n"	);
+		DBG_8192C("H2C Cmd exe down. \n"	);	
 	else
 		DBG_8192C("H2C Cmd exe failed. \n"	);
 */
 	ret = _SUCCESS;
-	_func_exit_;
 
-#else
-	u8	BoxNum;
-	u16	BOXReg, BOXExtReg;
-	u8	BoxContent[4], BoxExtContent[2];
-	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(padapter);
-	u8 	BufIndex=0;
-	u8	bWriteSucess = _FALSE;
-	u8	IsFwRead = _FALSE;
-	u8	WaitH2cLimmit = 100;
+exit:
 
-	u32	h2c_cmd = 0;
-	u16	h2c_cmd_ex = 0;
-
-_func_enter_;
-
-	//DBG_8192C("FillH2CCmd : ElementID=%d \n",ElementID);
-
-	while(!bWriteSucess)
-	{
-		// 2. Find the last BOX number which has been writen.
-		BoxNum = pHalData->LastHMEBoxNum;
-		switch(BoxNum)
-		{
-			case 0:
-				BOXReg = REG_HMEBOX_0;
-				BOXExtReg = REG_HMEBOX_EXT_0;
-				break;
-			case 1:
-				BOXReg = REG_HMEBOX_1;
-				BOXExtReg = REG_HMEBOX_EXT_1;
-				break;
-			case 2:
-				BOXReg = REG_HMEBOX_2;
-				BOXExtReg = REG_HMEBOX_EXT_2;
-				break;
-			case 3:
-				BOXReg = REG_HMEBOX_3;
-				BOXExtReg = REG_HMEBOX_EXT_3;
-				break;
-			default:
-				break;
-		}
-
-		// 3. Check if the box content is empty.
-		IsFwRead = CheckFwReadLastMSG(padapter, BoxNum);
-		while(!IsFwRead)
-		{
-			//wait until Fw read
-			WaitH2cLimmit--;
-			if(WaitH2cLimmit == 0)
-			{
-				DBG_8192C("FillH2CCmd92C(): Wating too long for FW read clear HMEBox(%d)!!!\n", BoxNum);
-				break;
-			}
-			rtw_msleep_os(10); //us
-			IsFwRead = CheckFwReadLastMSG(padapter, BoxNum);
-			//U1btmp = PlatformEFIORead1Byte(Adapter, 0x1BF);
-			//RT_TRACE(COMP_CMD, DBG_LOUD, ("FillH2CCmd92C(): Wating for FW read clear HMEBox(%d)!!! 0x1BF = %2x\n", BoxNum, U1btmp));
-		}
-
-		// If Fw has not read the last H2C cmd, break and give up this H2C.
-		if(!IsFwRead)
-		{
-			DBG_8192C("FillH2CCmd92C():  Write H2C register BOX[%d] fail!!!!! Fw do not read. \n", BoxNum);
-			break;
-		}
-
-		// 4. Fill the H2C cmd into box
-		_rtw_memset(BoxContent, 0, sizeof(BoxContent));
-		_rtw_memset(BoxExtContent, 0, sizeof(BoxExtContent));
-
-		BoxContent[0] = ElementID; // Fill element ID
-
-		//DBG_8192C("FillH2CCmd92C():Write ElementID BOXReg(%4x) = %2x \n", BOXReg, ElementID);
-
-		switch(CmdLen)
-		{
-			case 1:
-				{
-					BoxContent[0] &= ~(BIT7);
-					_rtw_memcpy((u8*)(BoxContent)+1, pCmdBuffer+BufIndex, 1);
-					rtw_write32(padapter, BOXReg, *((u32*)BoxContent));
-					h2c_cmd =  *((u32*)BoxContent);
-					break;
-				}
-			case 2:
-				{
-					BoxContent[0] &= ~(BIT7);
-					_rtw_memcpy((u8*)(BoxContent)+1, pCmdBuffer+BufIndex, 2);
-					rtw_write32(padapter, BOXReg, *((u32*)BoxContent));
-					h2c_cmd =  *((u32*)BoxContent);
-					break;
-				}
-			case 3:
-				{
-					BoxContent[0] &= ~(BIT7);
-					_rtw_memcpy((u8*)(BoxContent)+1, pCmdBuffer+BufIndex, 3);
-					rtw_write32(padapter, BOXReg, *((u32*)BoxContent));
-					h2c_cmd =  *((u32*)BoxContent);
-					break;
-				}
-			case 4:
-				{
-					BoxContent[0] |= (BIT7);
-					_rtw_memcpy((u8*)(BoxExtContent), pCmdBuffer+BufIndex, 2);
-					_rtw_memcpy((u8*)(BoxContent)+1, pCmdBuffer+BufIndex+2, 2);
-					rtw_write16(padapter, BOXExtReg, *((u16*)BoxExtContent));
-					rtw_write32(padapter, BOXReg, *((u32*)BoxContent));
-					h2c_cmd =  *((u32*)BoxContent);
-					h2c_cmd_ex = *((u32*)BoxExtContent);
-					break;
-				}
-			case 5:
-				{
-					BoxContent[0] |= (BIT7);
-					_rtw_memcpy((u8*)(BoxExtContent), pCmdBuffer+BufIndex, 2);
-					_rtw_memcpy((u8*)(BoxContent)+1, pCmdBuffer+BufIndex+2, 3);
-					rtw_write16(padapter, BOXExtReg, *((u16*)BoxExtContent));
-					rtw_write32(padapter, BOXReg, *((u32*)BoxContent));
-					h2c_cmd =  *((u32*)BoxContent);
-					h2c_cmd_ex = *((u32*)BoxExtContent);
-					break;
-				}
-			default:
-					break;
-
-		}
-
-
-		DBG_8192C("MSG_BOX:%d,CmdLen(%d), reg:0x%x =>h2c_cmd:0x%x, reg:0x%x =>h2c_cmd_ex:0x%x ..\n"
-			,pHalData->LastHMEBoxNum ,CmdLen,BOXReg,h2c_cmd,BOXExtReg,h2c_cmd_ex);
-
-		//DBG_8192C("FillH2CCmd(): BoxExtContent=0x%x\n", *(u16*)BoxExtContent);
-		//DBG_8192C("FillH2CCmd(): BoxContent=0x%x\n", *(u32*)BoxContent);
-
-		if(IS_NORMAL_CHIP(pHalData->VersionID))
-		{
-			// 5. Normal chip does not need to check if the H2C cmd has be written successfully.
-			bWriteSucess = _TRUE;
-		}
-		else
-		{
-			// 5. Check if the H2C cmd has be written successfully.
-			bWriteSucess = CheckWriteMSG(padapter, BoxNum);
-			if(!bWriteSucess) //If not then write again.
-				continue;
-
-			//6. Fill H2C protection register.
-
-			rtw_write8(padapter, REG_MCUTST_1+BoxNum, 0xFF);
-			//RT_TRACE(COMP_CMD, DBG_LOUD, ("FillH2CCmd92C():Write Reg(%4x) = 0xFF \n", REG_MCUTST_1+BoxNum));
-		}
-
-		// Record the next BoxNum
-		pHalData->LastHMEBoxNum = BoxNum+1;
-		if(pHalData->LastHMEBoxNum == 4) // loop to 0
-			pHalData->LastHMEBoxNum = 0;
-
-		//DBG_8192C("FillH2CCmd92C():pHalData->LastHMEBoxNum  = %d\n", pHalData->LastHMEBoxNum);
-
-	}
+	_exit_critical_mutex(&(adapter_to_dvobj(padapter)->h2c_fwcmd_mutex), NULL);	
 
 _func_exit_;
 
-#endif
-
-#ifdef CONFIG_CONCURRENT_MODE
-	//_exit_critical_mutex(padapter->ph2c_fwcmd_mutex, NULL);
-#endif
-exit:
 	return ret;
 
 }
 
 u8 rtl8192c_h2c_msg_hdl(_adapter *padapter, unsigned char *pbuf)
-{
+{	
 	u8 ElementID, CmdLen;
 	u8 *pCmdBuffer;
 	struct cmd_msg_parm  *pcmdmsg;
-
+	
 	if(!pbuf)
 		return H2C_PARAMETERS_ERROR;
 
@@ -405,13 +178,13 @@ u8 rtl8192c_set_FwSelectSuspend_cmd(_adapter *padapter ,u8 bfwpoll, u16 period)
 	DBG_8192C("==>%s bfwpoll(%x)\n",__FUNCTION__,bfwpoll);
 	param.gpio_period = period;//Polling GPIO_11 period time
 	param.ROFOn = (_TRUE == bfwpoll)?1:0;
-	rtl8192c_FillH2CCmd(padapter, SELECTIVE_SUSPEND_ROF_CMD, sizeof(param), (u8*)(&param));
+	rtl8192c_FillH2CCmd(padapter, SELECTIVE_SUSPEND_ROF_CMD, sizeof(param), (u8*)(&param));		
 	return res;
 }
 #endif //CONFIG_AUTOSUSPEND && SUPPORT_HW_RFOFF_DETECTED
 
 u8 rtl8192c_set_rssi_cmd(_adapter*padapter, u8 *param)
-{
+{	
 	u8	res=_SUCCESS;
 
 _func_enter_;
@@ -426,101 +199,52 @@ _func_exit_;
 }
 
 u8 rtl8192c_set_raid_cmd(_adapter*padapter, u32 mask, u8 arg)
-{
+{	
 	u8	buf[5];
 	u8	res=_SUCCESS;
-
-_func_enter_;
-
+	
+_func_enter_;	
+	
 	_rtw_memset(buf, 0, 5);
 	mask = cpu_to_le32( mask );
 	_rtw_memcpy(buf, &mask, 4);
 	buf[4]  = arg;
 
 	rtl8192c_FillH2CCmd(padapter, MACID_CONFIG_EID, 5, buf);
-
+	
 _func_exit_;
 
 	return res;
 
 }
 
-u8 rtl8192c_set_ext_macid_period_cmd(_adapter*padapter,  u8 period)
-{
-	u8	ext_macid_period=0;
-	u8	res=_SUCCESS;
-
-_func_enter_;
-
-	ext_macid_period=period;
-
-	rtl8192c_FillH2CCmd(padapter, EXT_MACID_PERIOD_EID, 1, &ext_macid_period);
-
-_func_exit_;
-
-	return res;
-
-}
-
-u8 rtl8192c_set_raid64_cmd(_adapter*padapter, u32 mask, u8 arg)
-{
-	u8	buf[5];
-	u8	res=_SUCCESS;
-
-_func_enter_;
-
-	_rtw_memset(buf, 0, 5);
-	mask = cpu_to_le32( mask );
-	_rtw_memcpy(buf, &mask, 4);
-	buf[4]  = arg;
-
-	rtl8192c_FillH2CCmd(padapter, MACID64_CONFIG_EID, 5, buf);
-
-_func_exit_;
-
-	return res;
-
-}
 //bitmap[0:27] = tx_rate_bitmap
 //bitmap[28:31]= Rate Adaptive id
 //arg[0:4] = macid
 //arg[5] = Short GI
-void rtl8192c_Add_RateATid(PADAPTER pAdapter, u32 bitmap, u8 arg, u8 mac_id)
-{
-
+void rtl8192c_Add_RateATid(PADAPTER pAdapter, u32 bitmap, u8 arg)
+{	
+	
 	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(pAdapter);
-
+		
 	if(pHalData->fw_ractrl == _TRUE)
 	{
-		DBG_8192C("%s() pHalData->fw_ractrl == _TRUE\n",__FUNCTION__);
-#ifdef SUPPORT_64_STA
-		if(mac_id >=FW_CTRL_MACID){
-			rtl8192c_set_ext_macid_period_cmd(pAdapter,20);
-			rtl8192c_set_raid64_cmd(pAdapter, bitmap, arg);
-			DBG_8192C("%s() rtl8192c_set_raid64_cmd, bitmap=0x%x, arg =0x%x\n",__FUNCTION__,bitmap,arg);
-		}
-		else
-#endif	//SUPPORT_64_STA
-		{
-			rtl8192c_set_raid_cmd(pAdapter, bitmap, arg);
-			DBG_8192C("%s() rtl8192c_set_raid_cmd, bitmap=0x%x, arg =0x%x\n",__FUNCTION__,bitmap,arg);
-		}
-
+		rtl8192c_set_raid_cmd(pAdapter, bitmap, arg);
 	}
 	else
 	{
 		u8 macid, init_rate, shortGIrate=_FALSE;
 
 		init_rate = get_highest_rate_idx(bitmap&0x0fffffff)&0x3f;
-
+		
 		macid = arg&0x1f;
-
+		
 		shortGIrate = (arg&BIT(5)) ? _TRUE:_FALSE;
-
+		
 		if (shortGIrate==_TRUE)
 			init_rate |= BIT(6);
 
-		rtw_write8(pAdapter, (REG_INIDATA_RATE_SEL+macid), (u8)init_rate);
+		rtw_write8(pAdapter, (REG_INIDATA_RATE_SEL+macid), (u8)init_rate);		
 	}
 
 }
@@ -529,7 +253,7 @@ void rtl8192c_set_FwPwrMode_cmd(_adapter*padapter, u8 Mode)
 {
 	SETPWRMODE_PARM H2CSetPwrMode;
 	struct pwrctrl_priv *pwrpriv = &padapter->pwrctrlpriv;
-
+	
 _func_enter_;
 
 	DBG_871X("%s(): Mode = %d, SmartPS = %d\n", __FUNCTION__,Mode,pwrpriv->smart_ps);
@@ -541,7 +265,7 @@ _func_enter_;
 	H2CSetPwrMode.BcnPassTime = 1;//pPSC->RegMaxLPSAwakeIntvl;
 
 	rtl8192c_FillH2CCmd(padapter, SET_PWRMODE_EID, sizeof(H2CSetPwrMode), (u8 *)&H2CSetPwrMode);
-
+	
 _func_exit_;
 }
 
@@ -558,11 +282,11 @@ void ConstructBeacon(_adapter *padapter, u8 *pframe, u32 *pLength)
 
 	//DBG_871X("%s\n", __FUNCTION__);
 
-	pwlanhdr = (struct rtw_ieee80211_hdr *)pframe;
+	pwlanhdr = (struct rtw_ieee80211_hdr *)pframe;	
 
 	fctrl = &(pwlanhdr->frame_ctl);
 	*(fctrl) = 0;
-
+	
 	_rtw_memcpy(pwlanhdr->addr1, bc_addr, ETH_ALEN);
 	_rtw_memcpy(pwlanhdr->addr2, myid(&(padapter->eeprompriv)), ETH_ALEN);
 	_rtw_memcpy(pwlanhdr->addr3, get_my_bssid(cur_network), ETH_ALEN);
@@ -570,16 +294,16 @@ void ConstructBeacon(_adapter *padapter, u8 *pframe, u32 *pLength)
 	SetSeqNum(pwlanhdr, 0/*pmlmeext->mgnt_seq*/);
 	//pmlmeext->mgnt_seq++;
 	SetFrameSubType(pframe, WIFI_BEACON);
-
-	pframe += sizeof(struct rtw_ieee80211_hdr_3addr);
+	
+	pframe += sizeof(struct rtw_ieee80211_hdr_3addr);	
 	pktlen = sizeof (struct rtw_ieee80211_hdr_3addr);
-
+	
 	//timestamp will be inserted by hardware
 	pframe += 8;
 	pktlen += 8;
 
 	// beacon interval: 2 bytes
-	_rtw_memcpy(pframe, (unsigned char *)(rtw_get_beacon_interval_from_ie(cur_network->IEs)), 2);
+	_rtw_memcpy(pframe, (unsigned char *)(rtw_get_beacon_interval_from_ie(cur_network->IEs)), 2); 
 
 	pframe += 2;
 	pktlen += 2;
@@ -595,7 +319,7 @@ void ConstructBeacon(_adapter *padapter, u8 *pframe, u32 *pLength)
 		//DBG_871X("ie len=%d\n", cur_network->IELength);
 		pktlen += cur_network->IELength - sizeof(NDIS_802_11_FIXED_IEs);
 		_rtw_memcpy(pframe, cur_network->IEs+sizeof(NDIS_802_11_FIXED_IEs), pktlen);
-
+		
 		goto _ConstructBeacon;
 	}
 
@@ -618,12 +342,12 @@ void ConstructBeacon(_adapter *padapter, u8 *pframe, u32 *pLength)
 		//ATIMWindow = cur->Configuration.ATIMWindow;
 		ATIMWindow = 0;
 		pframe = rtw_set_ie(pframe, _IBSS_PARA_IE_, 2, (unsigned char *)(&ATIMWindow), &pktlen);
-	}
+	}	
 
 
 	//todo: ERP IE
-
-
+	
+	
 	// EXTERNDED SUPPORTED RATE
 	if (rate_len > 8)
 	{
@@ -699,7 +423,7 @@ void ConstructNullFunctionData(_adapter *padapter, u8 *pframe, u32 *pLength, u8 
 	}
 
 	switch(cur_network->network.InfrastructureMode)
-	{
+	{			
 		case Ndis802_11Infrastructure:
 			SetToDs(fctrl);
 			_rtw_memcpy(pwlanhdr->addr1, get_my_bssid(&(pmlmeinfo->network)), ETH_ALEN);
@@ -733,21 +457,21 @@ void ConstructNullFunctionData(_adapter *padapter, u8 *pframe, u32 *pLength, u8 
 void ConstructProbeRsp(_adapter *padapter, u8 *pframe, u32 *pLength, u8 *StaAddr, BOOLEAN bHideSSID)
 {
 	struct rtw_ieee80211_hdr	*pwlanhdr;
-	u16					*fctrl;
+	u16					*fctrl;	
 	u8					*mac, *bssid;
 	u32					pktlen;
 	struct mlme_ext_priv	*pmlmeext = &(padapter->mlmeextpriv);
 	struct mlme_ext_info	*pmlmeinfo = &(pmlmeext->mlmext_info);
 	WLAN_BSSID_EX 		*cur_network = &(pmlmeinfo->network);
-
-
+	
+	
 	//DBG_871X("%s\n", __FUNCTION__);
-
-	pwlanhdr = (struct rtw_ieee80211_hdr *)pframe;
-
+	
+	pwlanhdr = (struct rtw_ieee80211_hdr *)pframe;	
+	
 	mac = myid(&(padapter->eeprompriv));
 	bssid = cur_network->MacAddress;
-
+	
 	fctrl = &(pwlanhdr->frame_ctl);
 	*(fctrl) = 0;
 	_rtw_memcpy(pwlanhdr->addr1, StaAddr, ETH_ALEN);
@@ -756,7 +480,7 @@ void ConstructProbeRsp(_adapter *padapter, u8 *pframe, u32 *pLength, u8 *StaAddr
 
 	SetSeqNum(pwlanhdr, 0);
 	SetFrameSubType(fctrl, WIFI_PROBERSP);
-
+	
 	pktlen = sizeof(struct rtw_ieee80211_hdr_3addr);
 	pframe += pktlen;
 
@@ -766,13 +490,13 @@ void ConstructProbeRsp(_adapter *padapter, u8 *pframe, u32 *pLength, u8 *StaAddr
 	_rtw_memcpy(pframe, cur_network->IEs, cur_network->IELength);
 	pframe += cur_network->IELength;
 	pktlen += cur_network->IELength;
-
+	
 	*pLength = pktlen;
 }
 
 //
 // Description: In normal chip, we should send some packet to Hw which will be used by Fw
-//			in FW LPS mode. The function is to fill the Tx descriptor of this packets, then
+//			in FW LPS mode. The function is to fill the Tx descriptor of this packets, then 
 //			Fw can tell Hw to send these packet derectly.
 // Added by tynli. 2009.10.15.
 //
@@ -818,7 +542,7 @@ FillFakeTxDescriptor92C(
 	// Using this checksum can let hardware recovery from packet bulk out error (e.g. Cancel URC, Bulk out error.).
 	rtl8192cu_cal_txdesc_chksum(ptxdesc);
 #endif
-
+	
 	//RT_PRINT_DATA(COMP_CMD, DBG_TRACE, "TxFillCmdDesc8192C(): H2C Tx Cmd Content ----->\n", pDesc, TX_DESC_SIZE);
 }
 
@@ -830,23 +554,23 @@ CheckFwRsvdPageContent(
 )
 {
 	HAL_DATA_TYPE*	pHalData = GET_HAL_DATA(Adapter);
-	u32	MaxBcnPageNum;
-
-	if(pHalData->FwRsvdPageStartOffset != 0)
-	{
-		/*MaxBcnPageNum = PageNum_128(pMgntInfo->MaxBeaconSize);
-		RT_ASSERT((MaxBcnPageNum <= pHalData->FwRsvdPageStartOffset),
+	u32	MaxBcnPageNum;	
+	
+ 	if(pHalData->FwRsvdPageStartOffset != 0)
+ 	{
+ 		/*MaxBcnPageNum = PageNum_128(pMgntInfo->MaxBeaconSize);
+		RT_ASSERT((MaxBcnPageNum <= pHalData->FwRsvdPageStartOffset), 
 			("CheckFwRsvdPageContent(): The reserved page content has been"\
 			"destroyed by beacon!!! MaxBcnPageNum(%d) FwRsvdPageStartOffset(%d)\n!",
 			MaxBcnPageNum, pHalData->FwRsvdPageStartOffset));*/
-	}
+ 	}
 }
 
 //
-// Description: Fill the reserved packets that FW will use to RSVD page.
+// Description: Fill the reserved packets that FW will use to RSVD page. 
 //			Now we just send 4 types packet to rsvd page.
 //			(1)Beacon, (2)Ps-poll, (3)Null data, (4)ProbeRsp.
-//	Input:
+//	Input: 
 //	    bDLFinished - FALSE: At the first time we will send all the packets as a large packet to Hw,
 //				 		so we need to set the packet length to total lengh.
 //			      TRUE: At the second time, we should send the first packet (default:beacon)
@@ -854,7 +578,7 @@ CheckFwRsvdPageContent(
 // 2009.10.15 by tynli.
 static void SetFwRsvdPagePkt(PADAPTER Adapter, BOOLEAN bDLFinished)
 {
-	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(Adapter);
+	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(Adapter);	
 	struct xmit_frame	*pmgntframe;
 	struct pkt_attrib	*pattrib;
 	struct xmit_priv	*pxmitpriv = &(Adapter->xmitpriv);
@@ -895,7 +619,7 @@ static void SetFwRsvdPagePkt(PADAPTER Adapter, BOOLEAN bDLFinished)
 
 //--------------------------------------------------------------------
 
-	// When we count the first page size, we need to reserve description size for the RSVD
+	// When we count the first page size, we need to reserve description size for the RSVD 
 	// packet, it will be filled in front of the packet in TXPKTBUF.
 	U1bTmp = (u8)PageNum_128(BeaconLength+TxDescLen);
 	PageNum += U1bTmp;
@@ -905,10 +629,10 @@ static void SetFwRsvdPagePkt(PADAPTER Adapter, BOOLEAN bDLFinished)
 	pHalData->FwRsvdPageStartOffset = PageNum;
 
 	BufIndex = (PageNum*128) + TxDescOffset;
-
+		
 	//(2) ps-poll
 	ConstructPSPoll(Adapter, &ReservedPagePacket[BufIndex],&PSPollLength);
-
+	
 	FillFakeTxDescriptor92C(Adapter, &ReservedPagePacket[BufIndex-TxDescLen], PSPollLength, _TRUE);
 
 	//DBG_8192C("SetFwRsvdPagePkt(): HW_VAR_SET_TX_CMD: PS-POLL\n", &ReservedPagePacket[BufIndex-TxDescLen], (PSPollLength+TxDescLen));
@@ -916,7 +640,7 @@ static void SetFwRsvdPagePkt(PADAPTER Adapter, BOOLEAN bDLFinished)
 	RsvdPageLoc.LocPsPoll = PageNum;
 
 //------------------------------------------------------------------
-
+			
 	U1bTmp = (u8)PageNum_128(PSPollLength+TxDescLen);
 	PageNum += U1bTmp;
 
@@ -924,16 +648,16 @@ static void SetFwRsvdPagePkt(PADAPTER Adapter, BOOLEAN bDLFinished)
 
 	//(3) null data
 	ConstructNullFunctionData(
-		Adapter,
+		Adapter, 
 		&ReservedPagePacket[BufIndex],
 		&NullFunctionDataLength,
 		get_my_bssid(&(pmlmeinfo->network)),
 		_FALSE);
-
+	
 	FillFakeTxDescriptor92C(Adapter, &ReservedPagePacket[BufIndex-TxDescLen], NullFunctionDataLength, _FALSE);
 
 	RsvdPageLoc.LocNullData = PageNum;
-
+	
 	//DBG_8192C("SetFwRsvdPagePkt(): HW_VAR_SET_TX_CMD: NULL DATA \n", &ReservedPagePacket[BufIndex-TxDescLen], (NullFunctionDataLength+TxDescLen));
 //------------------------------------------------------------------
 
@@ -941,15 +665,15 @@ static void SetFwRsvdPagePkt(PADAPTER Adapter, BOOLEAN bDLFinished)
 	PageNum += U1bTmp;
 
 	BufIndex = (PageNum*128) + TxDescOffset;
-
+	
 	//(4) probe response
 	ConstructProbeRsp(
-		Adapter,
+		Adapter, 
 		&ReservedPagePacket[BufIndex],
 		&ProbeRspLength,
 		get_my_bssid(&(pmlmeinfo->network)),
 		_FALSE);
-
+	
 	FillFakeTxDescriptor92C(Adapter, &ReservedPagePacket[BufIndex-TxDescLen], ProbeRspLength, _FALSE);
 
 	RsvdPageLoc.LocProbeRsp = PageNum;
@@ -976,7 +700,7 @@ static void SetFwRsvdPagePkt(PADAPTER Adapter, BOOLEAN bDLFinished)
 	pattrib->pktlen = pattrib->last_txcmdsz = TotalPacketLen - TxDescLen;
 	_rtw_memcpy(pmgntframe->buf_addr, ReservedPagePacket, TotalPacketLen);
 
-	Adapter->HalFunc.mgnt_xmit(Adapter, pmgntframe);
+	rtw_hal_mgnt_xmit(Adapter, pmgntframe);
 
 	bDLOK = _TRUE;
 
@@ -996,13 +720,15 @@ void rtl8192c_set_FwJoinBssReport_cmd(_adapter* padapter, u8 mstatus)
 	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(padapter);
 	struct mlme_ext_priv	*pmlmeext = &(padapter->mlmeextpriv);
 	struct mlme_ext_info	*pmlmeinfo = &(pmlmeext->mlmext_info);
-
+	
 _func_enter_;
 
 	DBG_871X("%s mstatus(%x)\n", __FUNCTION__,mstatus);
 
 	if(mstatus == 1)
 	{
+		BOOLEAN bRecover = _FALSE;
+	
 		// We should set AID, correct TSF, HW seq enable before set JoinBssReport to Fw in 88/92C.
 		// Suggested by filen. Added by tynli.
 		rtw_write16(padapter, REG_BCN_PSR_RPT, (0xC000|pmlmeinfo->aid));
@@ -1012,62 +738,57 @@ _func_enter_;
 		//rtw_write16(padapter, REG_NQOS_SEQ, ((pmlmeext->mgnt_seq+100)&0xFFF));
 		//rtw_write8(padapter, REG_HWSEQ_CTRL, 0xFF);
 
-		if(IS_NORMAL_CHIP(pHalData->VersionID))
+		//set REG_CR bit 8
+		//U1bTmp = rtw_read8(padapter, REG_CR+1);
+		rtw_write8(padapter,  REG_CR+1, 0x03);
+
+		// Disable Hw protection for a time which revserd for Hw sending beacon.
+		// Fix download reserved page packet fail that access collision with the protection time.
+		// 2010.05.11. Added by tynli.
+		//SetBcnCtrlReg(padapter, 0, BIT3);
+		//SetBcnCtrlReg(padapter, BIT4, 0);
+		rtw_write8(padapter, REG_BCN_CTRL, rtw_read8(padapter, REG_BCN_CTRL)&(~BIT(3)));
+		rtw_write8(padapter, REG_BCN_CTRL, rtw_read8(padapter, REG_BCN_CTRL)|BIT(4));
+
+		// Set FWHW_TXQ_CTRL 0x422[6]=0 to tell Hw the packet is not a real beacon frame.
+		if(pHalData->RegFwHwTxQCtrl&BIT6)
+			bRecover = _TRUE;
+
+		// To tell Hw the packet is not a real beacon frame.
+		//U1bTmp = rtw_read8(padapter, REG_FWHW_TXQ_CTRL+2);
+		rtw_write8(padapter, REG_FWHW_TXQ_CTRL+2, (pHalData->RegFwHwTxQCtrl&(~BIT6)));
+		pHalData->RegFwHwTxQCtrl &= (~BIT6);
+		SetFwRsvdPagePkt(padapter, 0);
+
+		// 2010.05.11. Added by tynli.
+		//SetBcnCtrlReg(padapter, BIT3, 0);
+		//SetBcnCtrlReg(padapter, 0, BIT4);
+		rtw_write8(padapter, REG_BCN_CTRL, rtw_read8(padapter, REG_BCN_CTRL)|BIT(3));
+		rtw_write8(padapter, REG_BCN_CTRL, rtw_read8(padapter, REG_BCN_CTRL)&(~BIT(4)));
+
+		// To make sure that if there exists an adapter which would like to send beacon.
+		// If exists, the origianl value of 0x422[6] will be 1, we should check this to
+		// prevent from setting 0x422[6] to 0 after download reserved page, or it will cause 
+		// the beacon cannot be sent by HW.
+		// 2010.06.23. Added by tynli.
+		if(bRecover)
 		{
-			BOOLEAN bRecover = _FALSE;
-
-			//set REG_CR bit 8
-			//U1bTmp = rtw_read8(padapter, REG_CR+1);
-			rtw_write8(padapter,  REG_CR+1, 0x03);
-
-			// Disable Hw protection for a time which revserd for Hw sending beacon.
-			// Fix download reserved page packet fail that access collision with the protection time.
-			// 2010.05.11. Added by tynli.
-			//SetBcnCtrlReg(padapter, 0, BIT3);
-			//SetBcnCtrlReg(padapter, BIT4, 0);
-			rtw_write8(padapter, REG_BCN_CTRL, rtw_read8(padapter, REG_BCN_CTRL)&(~BIT(3)));
-			rtw_write8(padapter, REG_BCN_CTRL, rtw_read8(padapter, REG_BCN_CTRL)|BIT(4));
-
-			// Set FWHW_TXQ_CTRL 0x422[6]=0 to tell Hw the packet is not a real beacon frame.
-			if(pHalData->RegFwHwTxQCtrl&BIT6)
-				bRecover = _TRUE;
-
-			// To tell Hw the packet is not a real beacon frame.
-			//U1bTmp = rtw_read8(padapter, REG_FWHW_TXQ_CTRL+2);
-			rtw_write8(padapter, REG_FWHW_TXQ_CTRL+2, (pHalData->RegFwHwTxQCtrl&(~BIT6)));
-			pHalData->RegFwHwTxQCtrl &= (~BIT6);
-			SetFwRsvdPagePkt(padapter, 0);
-
-			// 2010.05.11. Added by tynli.
-			//SetBcnCtrlReg(padapter, BIT3, 0);
-			//SetBcnCtrlReg(padapter, 0, BIT4);
-			rtw_write8(padapter, REG_BCN_CTRL, rtw_read8(padapter, REG_BCN_CTRL)|BIT(3));
-			rtw_write8(padapter, REG_BCN_CTRL, rtw_read8(padapter, REG_BCN_CTRL)&(~BIT(4)));
-
-			// To make sure that if there exists an adapter which would like to send beacon.
-			// If exists, the origianl value of 0x422[6] will be 1, we should check this to
-			// prevent from setting 0x422[6] to 0 after download reserved page, or it will cause
-			// the beacon cannot be sent by HW.
-			// 2010.06.23. Added by tynli.
-			if(bRecover)
-			{
-				rtw_write8(padapter, REG_FWHW_TXQ_CTRL+2, (pHalData->RegFwHwTxQCtrl|BIT6));
-				pHalData->RegFwHwTxQCtrl |= BIT6;
-			}
-
-			// Clear CR[8] or beacon packet will not be send to TxBuf anymore.
-			rtw_write8(padapter, REG_CR+1, 0x02);
+			rtw_write8(padapter, REG_FWHW_TXQ_CTRL+2, (pHalData->RegFwHwTxQCtrl|BIT6));
+			pHalData->RegFwHwTxQCtrl |= BIT6;
 		}
+
+		// Clear CR[8] or beacon packet will not be send to TxBuf anymore.
+		rtw_write8(padapter, REG_CR+1, 0x02);
 	}
 
 	JoinBssRptParm.OpMode = mstatus;
 
 	rtl8192c_FillH2CCmd(padapter, JOINBSS_RPT_EID, sizeof(JoinBssRptParm), (u8 *)&JoinBssRptParm);
-
+	
 _func_exit_;
 }
 
-#ifdef CONFIG_P2P
+#ifdef CONFIG_P2P_PS
 void rtl8192c_set_p2p_ctw_period_cmd(_adapter* padapter, u8 ctwindow)
 {
 	struct P2P_PS_CTWPeriod_t p2p_ps_ctw;
@@ -1075,12 +796,12 @@ void rtl8192c_set_p2p_ctw_period_cmd(_adapter* padapter, u8 ctwindow)
 	p2p_ps_ctw.CTWPeriod = ctwindow;
 
 	rtl8192c_FillH2CCmd(padapter, P2P_PS_CTW_CMD_EID, 1, (u8 *)(&p2p_ps_ctw));
-
+	
 }
 
 void rtl8192c_set_p2p_ps_offload_cmd(_adapter* padapter, u8 p2p_ps_state)
 {
-	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(padapter);
+	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(padapter);	
 	struct pwrctrl_priv		*pwrpriv = &padapter->pwrctrlpriv;
 	struct wifidirect_info	*pwdinfo = &( padapter->wdinfo );
 	struct P2P_PS_Offload_t	*p2p_ps_offload = &pHalData->p2p_ps_offload;
@@ -1103,7 +824,7 @@ _func_enter_;
 			{
 				p2p_ps_offload->CTWindow_En = 1;
 				ctwindow = pwdinfo->ctwindow;
-				if(IS_HARDWARE_TYPE_8723(padapter))
+				if(IS_HARDWARE_TYPE_8723A(padapter))
 				{
 					//rtw_write16(padapter, REG_ATIMWND, ctwindow);
 				}
@@ -1174,7 +895,7 @@ _func_enter_;
 		case P2P_PS_SCAN_DONE:
 			DBG_8192C("P2P_PS_SCAN_DONE \n");
 			p2p_ps_offload->discovery = 0;
-			pwdinfo->p2p_ps = P2P_PS_ENABLE;
+			pwdinfo->p2p_ps_state = P2P_PS_ENABLE;
 			break;
 		default:
 			break;
@@ -1185,7 +906,7 @@ _func_enter_;
 _func_exit_;
 
 }
-#endif //CONFIG_P2P
+#endif // CONFIG_P2P_PS
 
 #ifdef CONFIG_IOL
 #include <rtw_iol.h>
@@ -1200,8 +921,7 @@ int rtl8192c_IOL_exec_cmds_sync(ADAPTER *adapter, struct xmit_frame *xmit_frame,
 	if (rtw_IOL_append_END_cmd(xmit_frame) != _SUCCESS)
 		goto exit;
 
-	//adapter->HalFunc.mgnt_xmit(adapter, xmit_frame);
-	rtw_dump_xframe_sync(adapter, xmit_frame);
+	dump_mgntframe_and_wait(adapter, xmit_frame, max_wating_ms);
 
 	IoOffloadLoc.LocCmd = 0;
 	if(_SUCCESS != rtl8192c_FillH2CCmd(adapter, H2C_92C_IO_OFFLOAD, sizeof(IO_OFFLOAD_LOC), (u8 *)&IoOffloadLoc))
@@ -1247,7 +967,7 @@ int rtl8192c_IOL_exec_cmds_sync(ADAPTER *adapter, struct xmit_frame *xmit_frame,
 			//, rtw_read32(adapter, 0x134)
 		);
 		#if 0 //debug
-		rtw_write16(adapter, 0x1c4, 0x0000);
+		rtw_write16(adapter, 0x1c4, 0x0000); 
 		rtw_msleep_os(10);
 		DBG_871X("after reset, 0x1c4=0x%08x\n", rtw_read32(adapter, 0x1c4));
 		#endif
@@ -1274,6 +994,84 @@ exit:
 #endif //CONFIG_IOL
 
 
+#ifdef CONFIG_BEACON_DISABLE_OFFLOAD
+/* 
+ rtl8192c_dis_beacon_fun_cmd()
+	This function shall only be called by PORT1.
+	PORT0's beacon function can't be disabled, because it's used by RA function in FW/HW.
+	
+	// Still has the REG_BCN_CTRL_1 modified by unknowned party issue in case of Primary Interface + PORT1 combination.
+*/
+u8 rtl8192c_dis_beacon_fun_cmd(_adapter* padapter)
+{	
+	u8	buf[2];
+	u8	res=_SUCCESS;
+	
+_func_enter_;	
+	
+	_rtw_memset(buf, 0, sizeof(buf));
+
+	if (padapter->iface_type == IFACE_PORT0) {
+		//buf[0] = 0x1;
+		DBG_871X("%s(): ERROR! padapter->iface_type = %d\n", __FUNCTION__, padapter->iface_type);
+		return _FAIL;		
+	} else
+		buf[1] = 0x1;
+
+	rtl8192c_FillH2CCmd(padapter, H2C_92C_DISABLE_BCN_FUNC, 2, buf);
+	
+_func_exit_;
+
+	return res;
+
+}
+#endif  // CONFIG_BEACON_DISABLE_OFFLOAD
+
+
+#ifdef CONFIG_TSF_RESET_OFFLOAD
+/*
+	ask FW to Reset sync register at Beacon early interrupt
+*/
+u8 rtl8192c_reset_tsf(_adapter *padapter, u8 reset_port )
+{	
+	u8	buf[2];
+	u8	res=_SUCCESS;
+	
+_func_enter_;
+	if (IFACE_PORT0==reset_port) {
+		buf[0] = 0x1; buf[1] = 0;
+	
+	} else{
+		buf[0] = 0x0; buf[1] = 0x1;
+	}
+	rtl8192c_FillH2CCmd(padapter, H2C_92C_RESET_TSF, 2, buf);
+_func_exit_;
+
+	return res;
+}
+
+int reset_tsf(PADAPTER Adapter, u8 reset_port )
+{
+	u8 reset_cnt_before = 0, reset_cnt_after = 0, loop_cnt = 0;
+	u32 reg_reset_tsf_cnt = (IFACE_PORT0==reset_port) ?
+				REG_FW_RESET_TSF_CNT_0:REG_FW_RESET_TSF_CNT_1;
+
+	rtw_scan_abort(Adapter->pbuddy_adapter);	/*	site survey will cause reset_tsf fail	*/
+	reset_cnt_after = reset_cnt_before = rtw_read8(Adapter,reg_reset_tsf_cnt);
+	rtl8192c_reset_tsf(Adapter, reset_port);
+
+	while ((reset_cnt_after == reset_cnt_before ) && (loop_cnt < 10)) {
+		rtw_msleep_os(100);
+		loop_cnt++;
+		reset_cnt_after = rtw_read8(Adapter, reg_reset_tsf_cnt);
+	}
+
+	return(loop_cnt >= 10) ? _FAIL : _TRUE;
+}
+
+
+#endif	// CONFIG_TSF_RESET_OFFLOAD
+
 #ifdef CONFIG_WOWLAN
 
 void rtl8192c_set_wowlan_cmd(_adapter* padapter)
@@ -1281,7 +1079,7 @@ void rtl8192c_set_wowlan_cmd(_adapter* padapter)
 	u8	res=_SUCCESS;
 	SETWOWLAN_PARM pwowlan_parm;
 	struct pwrctrl_priv *pwrpriv=&padapter->pwrctrlpriv;
-
+	
 _func_enter_;
 
 	pwowlan_parm.mode =0;
@@ -1289,7 +1087,7 @@ _func_enter_;
 	pwowlan_parm.gpio_duration=0;
 	pwowlan_parm.second_mode =0;
 	pwowlan_parm.reserve=0;
-
+	
 	if(pwrpriv->wowlan_mode ==_TRUE){
 		pwowlan_parm.mode |=FW_WOWLAN_FUN_EN;
 		//printk("\n %s 1.pwowlan_parm.mode=0x%x \n",__FUNCTION__,pwowlan_parm.mode );
@@ -1309,10 +1107,12 @@ _func_enter_;
 		//pwowlan_parm.mode |=FW_WOWLAN_GPIO_ACTIVE;
 		pwowlan_parm.mode |=FW_WOWLAN_REKEY_WAKEUP;
 		pwowlan_parm.mode |=FW_WOWLAN_DEAUTH_WAKEUP;
-
+		
+		rtl8192c_set_FwJoinBssReport_cmd( padapter, 1);
+		
 		//GPIO3
 		pwowlan_parm.gpio_index=3;
-
+		
 		//duration unit is 64us
 		pwowlan_parm.gpio_duration=0xff;
 		//
@@ -1323,7 +1123,6 @@ _func_enter_;
 		}
 		rtl8192c_FillH2CCmd(padapter, H2C_WO_WLAN_CMD, 4, (u8 *)&pwowlan_parm);
 
-		rtl8192c_set_FwJoinBssReport_cmd( padapter, 1);
 		//keep alive period = 3 * 10 BCN interval
 		pwowlan_parm.mode =3;
 		pwowlan_parm.gpio_index=3;
@@ -1335,7 +1134,7 @@ _func_enter_;
 		pwowlan_parm.gpio_duration=0;
 		rtl8192c_FillH2CCmd(padapter, DISCONNECT_DECISION_CTRL_CMD, 3, (u8 *)&pwowlan_parm);
 		printk("%s after DISCONNECT_DECISION_CTRL_CMD register 0x81=%x \n",__FUNCTION__,rtw_read8(padapter, 0x81));
-
+		
 		//enable GPIO wakeup
 		pwowlan_parm.mode =1;
 		pwowlan_parm.gpio_index=0;
@@ -1345,7 +1144,7 @@ _func_enter_;
 	else
 		rtl8192c_FillH2CCmd(padapter, H2C_WO_WLAN_CMD, 3, (u8 *)&pwowlan_parm);
 
-
+	
 _func_exit_;
 
 	return ;
@@ -1353,3 +1152,8 @@ _func_exit_;
 }
 
 #endif  //CONFIG_WOWLAN
+
+
+
+
+
