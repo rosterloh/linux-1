@@ -3155,7 +3155,6 @@ static void rt2800_config_channel(struct rt2x00_dev *rt2x00dev,
 	case RF3070:
 	case RF5360:
 	case RF5370:
-	case RF3070:
 	case RF5372:
 	case RF5390:
 	case RF5392:
@@ -4272,7 +4271,6 @@ void rt2800_vco_calibration(struct rt2x00_dev *rt2x00dev)
 	case RF3290:
 	case RF5360:
 	case RF5370:
-	case RF3070:
 	case RF5372:
 	case RF5390:
 	case RF5392:
@@ -7036,7 +7034,6 @@ static int rt2800_init_eeprom(struct rt2x00_dev *rt2x00dev)
 	case RF3322:
 	case RF5360:
 	case RF5370:
-	case RF3070:
 	case RF5372:
 	case RF5390:
 	case RF5392:
@@ -7688,7 +7685,6 @@ static int rt2800_probe_hw_mode(struct rt2x00_dev *rt2x00dev)
 	case RF3290:
 	case RF5360:
 	case RF5370:
-	case RF3070:
 	case RF5372:
 	case RF5390:
 	case RF5392:

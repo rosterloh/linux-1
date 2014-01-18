@@ -2,4 +2,3 @@
 DEVICE=wlan0
 BOOTPROTO=dhcp
 ONBOOT=yes
-

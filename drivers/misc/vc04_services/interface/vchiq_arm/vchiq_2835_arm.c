@@ -548,7 +548,7 @@ free_pagelist(PAGELIST_T *pagelist, int actual)
 		up(&g_free_fragments_sema);
 	}
 
-     if (*need_release) {
+        if (*need_release) {
 		for (i = 0; i < num_pages; i++) {
 			if (pagelist->type != PAGELIST_WRITE)
 				set_page_dirty(pages[i]);
