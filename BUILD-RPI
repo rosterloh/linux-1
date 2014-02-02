@@ -1,0 +1,7 @@
+make
+make modules_install
+make headers_install INSTALL_HDR_PATH=$INSTALL_MOD_PATH
+cd $RPIDIR/tools-master/mkimage
+python ./imagetool-uncompressed.py ${KERNEL_SRC}/arch/arm/boot/zImage
+cp /boot/kernel.img /boot/kernel-old.img
+cp kernel.img $RPIDIR/root/boot/.
