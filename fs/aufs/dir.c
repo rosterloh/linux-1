@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2013 Junjiro R. Okajima
+ * Copyright (C) 2005-2014 Junjiro R. Okajima
  *
  * This program, aufs is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -12,8 +12,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -33,7 +32,7 @@ void au_add_nlink(struct inode *dir, struct inode *h_dir)
 	nlink += h_dir->i_nlink - 2;
 	if (h_dir->i_nlink < 2)
 		nlink += 2;
-	smp_mb();
+	smp_mb(); /* for i_nlink */
 	/* 0 can happen in revaliding */
 	set_nlink(dir, nlink);
 }
@@ -48,7 +47,7 @@ void au_sub_nlink(struct inode *dir, struct inode *h_dir)
 	nlink -= h_dir->i_nlink - 2;
 	if (h_dir->i_nlink < 2)
 		nlink -= 2;
-	smp_mb();
+	smp_mb(); /* for i_nlink */
 	/* nlink == 0 means the branch-fs is broken */
 	set_nlink(dir, nlink);
 }
@@ -153,11 +152,8 @@ static int do_open_dir(struct file *file, int flags)
 
 	FiMustWriteLock(file);
 
+	err = 0;
 	dentry = file->f_dentry;
-	err = au_alive_dir(dentry);
-	if (unlikely(err))
-		goto out;
-
 	file->f_version = dentry->d_inode->i_version;
 	bindex = au_dbstart(dentry);
 	au_set_fbstart(file, bindex);
@@ -187,7 +183,6 @@ static int do_open_dir(struct file *file, int flags)
 	au_set_fbstart(file, -1);
 	au_set_fbend_dir(file, -1);
 
-out:
 	return err;
 }
 

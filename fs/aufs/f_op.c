@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2013 Junjiro R. Okajima
+ * Copyright (C) 2005-2014 Junjiro R. Okajima
  *
  * This program, aufs is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -12,8 +12,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -36,11 +35,8 @@ int au_do_open_nondir(struct file *file, int flags)
 
 	FiMustWriteLock(file);
 
+	err = 0;
 	dentry = file->f_dentry;
-	err = au_d_alive(dentry);
-	if (unlikely(err))
-		goto out;
-
 	finfo = au_fi(file);
 	memset(&finfo->fi_htop, 0, sizeof(finfo->fi_htop));
 	atomic_set(&finfo->fi_mmapped, 0);
@@ -61,7 +57,6 @@ int au_do_open_nondir(struct file *file, int flags)
 		/* file->f_ra = h_file->f_ra; */
 	}
 
-out:
 	return err;
 }
 
@@ -358,7 +353,7 @@ static ssize_t aufs_splice_read(struct file *file, loff_t *ppos,
 	err = -EINVAL;
 	h_file = au_hf_top(file);
 	get_file(h_file);
-	if (0 && au_test_loopback_kthread()) {
+	if (au_test_loopback_kthread()) {
 		au_warn_loopback(h_file->f_dentry->d_sb);
 		if (file->f_mapping != h_file->f_mapping) {
 			file->f_mapping = h_file->f_mapping;
