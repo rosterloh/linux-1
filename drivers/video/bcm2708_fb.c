@@ -47,6 +47,11 @@ static const char *bcm2708_name = "BCM2708 FB";
 
 #define DRIVER_NAME "bcm2708_fb"
 
+static int fbwidth = 800;  /* module parameter */
+static int fbheight = 480; /* module parameter */
+static int fbdepth = 16;   /* module parameter */
+static int fbswap = 0;     /* module parameter */
+
 /* this data structure describes each frame buffer device we find */
 
 struct fbinfo_s {
@@ -126,7 +131,12 @@ static int bcm2708_fb_set_bitfields(struct fb_var_screeninfo *var)
 	 * encoded in the pixel data.  Calculate their position from
 	 * the bitfield length defined above.
 	 */
-	if (ret == 0 && var->bits_per_pixel >= 24) {
+	if (ret == 0 && var->bits_per_pixel >= 24 && fbswap) {
+		var->blue.offset = 0;
+		var->green.offset = var->blue.offset + var->blue.length;
+		var->red.offset = var->green.offset + var->green.length;
+		var->transp.offset = var->red.offset + var->red.length;
+	} else if (ret == 0 && var->bits_per_pixel >= 24) {
 		var->red.offset = 0;
 		var->green.offset = var->red.offset + var->red.length;
 		var->blue.offset = var->green.offset + var->green.length;
@@ -465,10 +475,6 @@ static struct fb_ops bcm2708_fb_ops = {
 	.fb_imageblit = bcm2708_fb_imageblit,
 };
 
-static int fbwidth = 800;	/* module parameter */
-static int fbheight = 480;	/* module parameter */
-static int fbdepth = 16;	/* module parameter */
-
 static int bcm2708_fb_register(struct bcm2708_fb *fb)
 {
 	int ret;
@@ -525,8 +531,8 @@ static int bcm2708_fb_register(struct bcm2708_fb *fb)
 
 	fb_set_var(&fb->fb, &fb->fb.var);
 
-	print_debug("BCM2708FB: registering framebuffer (%dx%d@%d)\n", fbwidth,
-		fbheight, fbdepth);
+	print_debug("BCM2708FB: registering framebuffer (%dx%d@%d) (%d)\n", fbwidth
+		fbheight, fbdepth, fbswap);
 
 	ret = register_framebuffer(&fb->fb);
 	print_debug("BCM2708FB: register framebuffer (%d)\n", ret);
@@ -638,6 +644,7 @@ module_exit(bcm2708_fb_exit);
 module_param(fbwidth, int, 0644);
 module_param(fbheight, int, 0644);
 module_param(fbdepth, int, 0644);
+module_param(fbswap, int, 0644);
 
 MODULE_DESCRIPTION("BCM2708 framebuffer driver");
 MODULE_LICENSE("GPL");
@@ -645,3 +652,4 @@ MODULE_LICENSE("GPL");
 MODULE_PARM_DESC(fbwidth, "Width of ARM Framebuffer");
 MODULE_PARM_DESC(fbheight, "Height of ARM Framebuffer");
 MODULE_PARM_DESC(fbdepth, "Bit depth of ARM Framebuffer");
+MODULE_PARM_DESC(fbswap, "Swap order of red and blue in 24 and 32 bit modes");
