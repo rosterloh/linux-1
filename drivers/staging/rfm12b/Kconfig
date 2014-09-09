@@ -1,4 +1,0 @@
-config RFM12B
-	tristate "Drivers for RFM12B modules"
-	help
-	  Say Y if you want to have support for Hope RF RFM12B modules.
