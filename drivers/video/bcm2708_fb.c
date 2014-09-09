@@ -38,6 +38,9 @@
 #include <linux/io.h>
 #include <linux/dma-mapping.h>
 
+//#define BCM2708_FB_DEBUG
+#define MODULE_NAME "bcm2708_fb"
+
 #ifdef BCM2708_FB_DEBUG
 #define print_debug(fmt,...) pr_debug("%s:%s:%d: "fmt, MODULE_NAME, __func__, __LINE__, ##__VA_ARGS__)
 #else
@@ -89,6 +92,7 @@ struct bcm2708_fb {
 	struct dentry *debugfs_dir;
 	wait_queue_head_t dma_waitq;
 	struct bcm2708_fb_stats stats;
+	unsigned long fb_bus_address;
 };
 
 #define to_bcm2708(info)	container_of(info, struct bcm2708_fb, fb)
@@ -264,12 +268,6 @@ static int bcm2708_fb_check_var(struct fb_var_screeninfo *var,
 	else if (var->vmode & FB_VMODE_INTERLACED)
 		yres = (yres + 1) / 2;
 
-	if (var->xres * yres > 1920 * 1200) {
-		pr_err("bcm2708_fb_check_var: ERROR: Pixel size >= 1920x1200; "
-		       "special treatment required! (TODO)\n");
-		return -EINVAL;
-	}
-
 	return 0;
 }
 
@@ -314,13 +312,15 @@ static int bcm2708_fb_set_par(struct fb_info *info)
 		else
 			fb->fb.fix.visual = FB_VISUAL_TRUECOLOR;
 
+		fb->fb_bus_address = fbinfo->base;
+		fbinfo->base &= ~0xc0000000;
 		fb->fb.fix.smem_start = fbinfo->base;
 		fb->fb.fix.smem_len = fbinfo->pitch * fbinfo->yres_virtual;
 		fb->fb.screen_size = fbinfo->screen_size;
 		if (fb->fb.screen_base)
 			iounmap(fb->fb.screen_base);
 		fb->fb.screen_base =
-			(void *)ioremap_wc(fb->fb.fix.smem_start, fb->fb.screen_size);
+			(void *)ioremap_wc(fbinfo->base, fb->fb.screen_size);
 		if (!fb->fb.screen_base) {
 			/* the console may currently be locked */
 			console_trylock();
@@ -331,7 +331,7 @@ static int bcm2708_fb_set_par(struct fb_info *info)
 	}
 	print_debug
 	    ("BCM2708FB: start = %p,%p width=%d, height=%d, bpp=%d, pitch=%d size=%d success=%d\n",
-	     (void *)fb->fb.screen_base, (void *)fb->fb.fix.smem_start,
+	     (void *)fb->fb.screen_base, (void *)fb->fb_bus_address,
 	     fbinfo->xres, fbinfo->yres, fbinfo->bpp,
 	     fbinfo->pitch, (int)fb->fb.screen_size, val);
 
@@ -375,10 +375,61 @@ static int bcm2708_fb_setcolreg(unsigned int regno, unsigned int red,
 
 static int bcm2708_fb_blank(int blank_mode, struct fb_info *info)
 {
-	/*print_debug("bcm2708_fb_blank\n"); */
-	return -1;
+	s32 result = -1;
+	u32 p[7];
+	if ( 	(blank_mode == FB_BLANK_NORMAL) || 
+		(blank_mode == FB_BLANK_UNBLANK)) {
+
+		p[0] = 28; //  size = sizeof u32 * length of p
+		p[1] = VCMSG_PROCESS_REQUEST; // process request
+		p[2] = VCMSG_SET_BLANK_SCREEN; // (the tag id)
+		p[3] = 4; // (size of the response buffer)
+		p[4] = 4; // (size of the request data)
+		p[5] = blank_mode;
+		p[6] = VCMSG_PROPERTY_END; // end tag
+	
+		bcm_mailbox_property(&p, p[0]);
+	
+		pr_info("bcm2708_fb_blank(%d) returns=%d p[1]=0x%x\n", blank_mode, p[5], p[1]);
+	
+		if ( p[1] == VCMSG_REQUEST_SUCCESSFUL )
+			result = 0;
+	}
+	return result;
 }
 
+static int bcm2708_fb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
+{
+	s32 result = -1;
+	info->var.xoffset = var->xoffset;
+	info->var.yoffset = var->yoffset;
+	result = bcm2708_fb_set_par(info);
+	pr_info("bcm2708_fb_pan_display(%d,%d) returns=%d\n", var->xoffset, var->yoffset, result);
+	return result;
+}
+
+static int bcm2708_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
+{
+	s32 result = -1;
+	u32 p[7];
+	if (cmd == FBIO_WAITFORVSYNC) {
+		p[0] = 28; //  size = sizeof u32 * length of p
+		p[1] = VCMSG_PROCESS_REQUEST; // process request
+		p[2] = VCMSG_SET_VSYNC; // (the tag id)
+		p[3] = 4; // (size of the response buffer)
+		p[4] = 4; // (size of the request data)
+		p[5] = 0; // dummy
+		p[6] = VCMSG_PROPERTY_END; // end tag
+
+		bcm_mailbox_property(&p, p[0]);
+
+		pr_info("bcm2708_fb_ioctl %x,%lx returns=%d p[1]=0x%x\n", cmd, arg, p[5], p[1]);
+
+		if ( p[1] == VCMSG_REQUEST_SUCCESSFUL )
+			result = 0;
+	}
+	return result;
+}
 static void bcm2708_fb_fillrect(struct fb_info *info,
 				const struct fb_fillrect *rect)
 {
@@ -423,7 +474,8 @@ static void bcm2708_fb_copyarea(struct fb_info *info,
 	int pixels = region->width * region->height;
 
 	/* Fallback to cfb_copyarea() if we don't like something */
-	if (bytes_per_pixel > 4 ||
+	if (in_atomic() ||
+	    bytes_per_pixel > 4 ||
 	    info->var.xres * info->var.yres > 1920 * 1200 ||
 	    region->width <= 0 || region->width > info->var.xres ||
 	    region->height <= 0 || region->height > info->var.yres ||
@@ -457,11 +509,11 @@ static void bcm2708_fb_copyarea(struct fb_info *info,
 
 		for (y = 0; y < region->height; y += scanlines_per_cb) {
 			dma_addr_t src =
-				fb->fb.fix.smem_start +
+				fb->fb_bus_address +
 				bytes_per_pixel * region->sx +
 				(region->sy + y) * fb->fb.fix.line_length;
 			dma_addr_t dst =
-				fb->fb.fix.smem_start +
+				fb->fb_bus_address +
 				bytes_per_pixel * region->dx +
 				(region->dy + y) * fb->fb.fix.line_length;
 
@@ -499,10 +551,10 @@ static void bcm2708_fb_copyarea(struct fb_info *info,
 			stride = -fb->fb.fix.line_length;
 		}
 		set_dma_cb(cb, burst_size,
-			   fb->fb.fix.smem_start + dy * fb->fb.fix.line_length +
+			   fb->fb_bus_address + dy * fb->fb.fix.line_length +
 						   bytes_per_pixel * region->dx,
 			   stride,
-			   fb->fb.fix.smem_start + sy * fb->fb.fix.line_length +
+			   fb->fb_bus_address + sy * fb->fb.fix.line_length +
 						   bytes_per_pixel * region->sx,
 			   stride,
 			   region->width * bytes_per_pixel,
@@ -564,6 +616,8 @@ static struct fb_ops bcm2708_fb_ops = {
 	.fb_fillrect = bcm2708_fb_fillrect,
 	.fb_copyarea = bcm2708_fb_copyarea,
 	.fb_imageblit = bcm2708_fb_imageblit,
+	.fb_pan_display = bcm2708_fb_pan_display,
+	.fb_ioctl = bcm2708_ioctl,
 };
 
 static int bcm2708_fb_register(struct bcm2708_fb *fb)
@@ -590,8 +644,8 @@ static int bcm2708_fb_register(struct bcm2708_fb *fb)
 	strncpy(fb->fb.fix.id, bcm2708_name, sizeof(fb->fb.fix.id));
 	fb->fb.fix.type = FB_TYPE_PACKED_PIXELS;
 	fb->fb.fix.type_aux = 0;
-	fb->fb.fix.xpanstep = 0;
-	fb->fb.fix.ypanstep = 0;
+	fb->fb.fix.xpanstep = 1;
+	fb->fb.fix.ypanstep = 1;
 	fb->fb.fix.ywrapstep = 0;
 	fb->fb.fix.accel = FB_ACCEL_NONE;
 
@@ -648,9 +702,6 @@ static int bcm2708_fb_probe(struct platform_device *dev)
 		ret = -ENOMEM;
 		goto free_region;
 	}
-
-	bcm2708_fb_debugfs_init(fb);
-
 
 	bcm2708_fb_debugfs_init(fb);
 

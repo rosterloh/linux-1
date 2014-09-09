@@ -74,6 +74,9 @@ static unsigned int baudrate = CONFIG_I2C_BCM2708_BAUDRATE;
 module_param(baudrate, uint, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 MODULE_PARM_DESC(baudrate, "The I2C baudrate");
 
+static bool combined = false;
+module_param(combined, bool, 0644);
+MODULE_PARM_DESC(combined, "Use combined transactions");
 
 struct bcm2708_i2c {
 	struct i2c_adapter adapter;
@@ -103,7 +106,7 @@ static void bcm2708_i2c_init_pinmode(int id)
 #define SET_GPIO_ALT(g,a) *(gpio+(((g)/10))) |= (((a)<=3?(a)+4:(a)==4?3:2)<<(((g)%10)*3))
 
 	int pin;
-	u32 *gpio = ioremap(0x20200000, SZ_16K);
+	u32 *gpio = ioremap(GPIO_BASE, SZ_16K);
 
         BUG_ON(id != 0 && id != 1);
 	/* BSC0 is on GPIO 0 & 1, BSC1 is on GPIO 2 & 3 */
@@ -150,11 +153,13 @@ static inline void bcm2708_bsc_fifo_fill(struct bcm2708_i2c *bi)
 static inline void bcm2708_bsc_setup(struct bcm2708_i2c *bi)
 {
 	unsigned long bus_hz;
-	u32 cdiv;
+	u32 cdiv, s;
 	u32 c = BSC_C_I2CEN | BSC_C_INTD | BSC_C_ST | BSC_C_CLEAR_1;
 
 	bus_hz = clk_get_rate(bi->clk);
 	cdiv = bus_hz / baudrate;
+	if (cdiv > 0xffff)
+		cdiv = 0xffff;
 
 	if (bi->msg->flags & I2C_M_RD)
 		c |= BSC_C_INTR | BSC_C_READ;
@@ -164,6 +169,32 @@ static inline void bcm2708_bsc_setup(struct bcm2708_i2c *bi)
 	bcm2708_wr(bi, BSC_DIV, cdiv);
 	bcm2708_wr(bi, BSC_A, bi->msg->addr);
 	bcm2708_wr(bi, BSC_DLEN, bi->msg->len);
+	if (combined)
+	{
+		/* Do the next two messages meet combined transaction criteria?
+		   - Current message is a write, next message is a read
+		   - Both messages to same slave address
+		   - Write message can fit inside FIFO (16 bytes or less) */
+		if ( (bi->nmsgs > 1) &&
+		    !(bi->msg[0].flags & I2C_M_RD) && (bi->msg[1].flags & I2C_M_RD) &&
+		     (bi->msg[0].addr == bi->msg[1].addr) && (bi->msg[0].len <= 16)) {
+			/* Fill FIFO with entire write message (16 byte FIFO) */
+			while (bi->pos < bi->msg->len)
+				bcm2708_wr(bi, BSC_FIFO, bi->msg->buf[bi->pos++]);
+			/* Start write transfer (no interrupts, don't clear FIFO) */
+			bcm2708_wr(bi, BSC_C, BSC_C_I2CEN | BSC_C_ST);
+			/* poll for transfer start bit (should only take 1-20 polls) */
+			do {
+				s = bcm2708_rd(bi, BSC_S);
+			} while (!(s & (BSC_S_TA | BSC_S_ERR | BSC_S_CLKT | BSC_S_DONE)));
+			/* Send next read message before the write transfer finishes. */
+			bi->nmsgs--;
+			bi->msg++;
+			bi->pos = 0;
+			bcm2708_wr(bi, BSC_DLEN, bi->msg->len);
+			c = BSC_C_I2CEN | BSC_C_INTD | BSC_C_INTR | BSC_C_ST | BSC_C_READ;
+		}
+	}
 	bcm2708_wr(bi, BSC_C, c);
 }
 
@@ -268,6 +299,8 @@ static int bcm2708_i2c_probe(struct platform_device *pdev)
 	struct clk *clk;
 	struct bcm2708_i2c *bi;
 	struct i2c_adapter *adap;
+	unsigned long bus_hz;
+	u32 cdiv;
 
 	regs = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!regs) {
@@ -343,8 +376,15 @@ static int bcm2708_i2c_probe(struct platform_device *pdev)
 		goto out_free_irq;
 	}
 
-	dev_info(&pdev->dev, "BSC%d Controller at 0x%08lx (irq %d) (baudrate %dk)\n",
-		pdev->id, (unsigned long)regs->start, irq, baudrate/1000);
+	bus_hz = clk_get_rate(bi->clk);
+	cdiv = bus_hz / baudrate;
+	if (cdiv > 0xffff) {
+		cdiv = 0xffff;
+		baudrate = bus_hz / cdiv;
+	}
+
+	dev_info(&pdev->dev, "BSC%d Controller at 0x%08lx (irq %d) (baudrate %d)\n",
+		pdev->id, (unsigned long)regs->start, irq, baudrate);
 
 	return 0;
 

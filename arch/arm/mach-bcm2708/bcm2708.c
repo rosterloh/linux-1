@@ -41,7 +41,7 @@
 #include <asm/irq.h>
 #include <linux/leds.h>
 #include <asm/mach-types.h>
-#include <asm/sched_clock.h>
+#include <linux/sched_clock.h>
 
 #include <asm/mach/arch.h>
 #include <asm/mach/flash.h>
@@ -79,6 +79,8 @@
 
 // use GPIO 4 for the one-wire GPIO pin, if enabled
 #define W1_GPIO 4
+// ensure one-wire GPIO pullup is disabled by default
+#define W1_PULLUP -1
 
 /* command line parameters */
 static unsigned boardrev, serial;
@@ -86,6 +88,10 @@ static unsigned uart_clock;
 static unsigned disk_led_gpio = 16;
 static unsigned disk_led_active_low = 1;
 static unsigned reboot_part = 0;
+static unsigned w1_gpio_pin = W1_GPIO;
+static unsigned w1_gpio_pullup = W1_PULLUP;
+static unsigned bcm2835_mmc = 0;
+static bool vc_i2c_override = false;
 
 static void __init bcm2708_init_led(void);
 
@@ -265,6 +271,7 @@ static struct platform_device bcm2708_dmaman_device = {
 #if defined(CONFIG_W1_MASTER_GPIO) || defined(CONFIG_W1_MASTER_GPIO_MODULE)
 static struct w1_gpio_platform_data w1_gpio_pdata = {
 	.pin = W1_GPIO,
+        .ext_pullup_enable_pin = W1_PULLUP,
 	.is_open_drain = 0,
 };
 
@@ -325,22 +332,13 @@ static struct resource bcm2708_usb_resources[] = {
 	       .end = IRQ_HOSTPORT,
 	       .flags = IORESOURCE_IRQ,
 	       },
+	[3] = {
+			.start = IRQ_USB,
+			.end = IRQ_USB,
+			.flags = IORESOURCE_IRQ,
+			},
 };
 
-bool fiq_fix_enable = true;
-
-static struct resource bcm2708_usb_resources_no_fiq_fix[] = {
-	[0] = {
-		.start = USB_BASE,
-		.end = USB_BASE + SZ_128K - 1,
-		.flags = IORESOURCE_MEM,
-		},
-	[1] = {
-		.start = IRQ_USB,
-		.end = IRQ_USB,
-		.flags = IORESOURCE_IRQ,
-		},
-};
 
 static u64 usb_dmamask = DMA_BIT_MASK(DMA_MASK_BITS_COMMON);
 
@@ -455,6 +453,34 @@ struct platform_device bcm2708_emmc_device = {
 		.coherent_dma_mask = 0xffffffffUL},
 };
 #endif /* CONFIG_MMC_SDHCI_BCM2708 */
+
+#ifdef CONFIG_MMC_BCM2835	/* Arasan emmc SD (new) */
+static struct resource bcm2835_emmc_resources[] = {
+	[0] = {
+	       .start = EMMC_BASE,
+	       .end = EMMC_BASE + SZ_256 - 1,	/* we only need this area */
+	       /* the memory map actually makes SZ_4K available  */
+	       .flags = IORESOURCE_MEM,
+	       },
+	[1] = {
+	       .start = IRQ_ARASANSDIO,
+	       .end = IRQ_ARASANSDIO,
+	       .flags = IORESOURCE_IRQ,
+	       },
+};
+
+static u64 bcm2835_emmc_dmamask = 0xffffffffUL;
+
+struct platform_device bcm2835_emmc_device = {
+	.name = "mmc-bcm2835",
+	.id = 0,
+	.num_resources = ARRAY_SIZE(bcm2835_emmc_resources),
+	.resource = bcm2835_emmc_resources,
+	.dev = {
+		.dma_mask = &bcm2835_emmc_dmamask,
+		.coherent_dma_mask = 0xffffffffUL},
+};
+#endif /* CONFIG_MMC_BCM2835 */
 
 static struct resource bcm2708_powerman_resources[] = {
 	[0] = {
@@ -655,6 +681,20 @@ static struct platform_device snd_pcm5102a_codec_device = {
 };
 #endif
 
+#if defined(CONFIG_SND_BCM2708_SOC_HIFIBERRY_DACPLUS) || defined(CONFIG_SND_BCM2708_SOC_HIFIBERRY_DACPLUS_MODULE)
+static struct platform_device snd_rpi_hifiberry_dacplus_device = {
+        .name = "snd-rpi-hifiberry-dacplus",
+        .id = 0,
+        .num_resources = 0,
+};
+
+static struct i2c_board_info __initdata snd_pcm512x_hbdacplus_i2c_devices[] = {
+        {
+                I2C_BOARD_INFO("pcm5122", 0x4d)
+        },
+};
+#endif
+
 #if defined(CONFIG_SND_BCM2708_SOC_HIFIBERRY_DIGI) || defined(CONFIG_SND_BCM2708_SOC_HIFIBERRY_DIGI_MODULE)
 static struct platform_device snd_hifiberry_digi_device = {
         .name = "snd-hifiberry-digi",
@@ -681,6 +721,22 @@ static struct platform_device snd_pcm1794a_codec_device = {
         .name = "pcm1794a-codec",
         .id = -1,
         .num_resources = 0,
+};
+#endif
+
+
+#if defined(CONFIG_SND_BCM2708_SOC_IQAUDIO_DAC) || defined(CONFIG_SND_BCM2708_SOC_IQAUDIO_DAC_MODULE)
+static struct platform_device snd_rpi_iqaudio_dac_device = {
+        .name = "snd-rpi-iqaudio-dac",
+        .id = 0,
+        .num_resources = 0,
+};
+
+// Use the actual device name rather than generic driver name
+static struct i2c_board_info __initdata snd_pcm512x_i2c_devices[] = {
+	{
+		I2C_BOARD_INFO("pcm5122", 0x4c)
+	},
 };
 #endif
 
@@ -783,29 +839,38 @@ void __init bcm2708_init(void)
 	bcm_register_device(&bcm2708_gpio_device);
 #endif
 #if defined(CONFIG_W1_MASTER_GPIO) || defined(CONFIG_W1_MASTER_GPIO_MODULE)
+	w1_gpio_pdata.pin = w1_gpio_pin;
+	w1_gpio_pdata.ext_pullup_enable_pin = w1_gpio_pullup;
 	platform_device_register(&w1_device);
 #endif
 	bcm_register_device(&bcm2708_systemtimer_device);
 	bcm_register_device(&bcm2708_fb_device);
-	if (!fiq_fix_enable)
-	{
-		bcm2708_usb_device.resource = bcm2708_usb_resources_no_fiq_fix;
-		bcm2708_usb_device.num_resources = ARRAY_SIZE(bcm2708_usb_resources_no_fiq_fix);
-	}
 	bcm_register_device(&bcm2708_usb_device);
 	bcm_register_device(&bcm2708_uart1_device);
 	bcm_register_device(&bcm2708_powerman_device);
 
 #ifdef CONFIG_MMC_SDHCI_BCM2708
-	bcm_register_device(&bcm2708_emmc_device);
+	if (!bcm2835_mmc)
+		bcm_register_device(&bcm2708_emmc_device);
+#endif
+#ifdef CONFIG_MMC_BCM2835
+	if (bcm2835_mmc)
+		bcm_register_device(&bcm2835_emmc_device);
 #endif
 	bcm2708_init_led();
 	for (i = 0; i < ARRAY_SIZE(bcm2708_alsa_devices); i++)
 		bcm_register_device(&bcm2708_alsa_devices[i]);
 
 	bcm_register_device(&bcm2708_spi_device);
-	bcm_register_device(&bcm2708_bsc0_device);
-	bcm_register_device(&bcm2708_bsc1_device);
+
+	if (vc_i2c_override) {
+		bcm_register_device(&bcm2708_bsc0_device);
+		bcm_register_device(&bcm2708_bsc1_device);
+	} else if ((boardrev & 0xffffff) == 0x2 || (boardrev & 0xffffff) == 0x3) {
+		bcm_register_device(&bcm2708_bsc0_device);
+	} else {
+		bcm_register_device(&bcm2708_bsc1_device);
+	}
 
 	bcm_register_device(&bcm2835_hwmon_device);
 	bcm_register_device(&bcm2835_thermal_device);
@@ -819,6 +884,11 @@ void __init bcm2708_init(void)
         bcm_register_device(&snd_pcm5102a_codec_device);
 #endif
 
+#if defined(CONFIG_SND_BCM2708_SOC_HIFIBERRY_DACPLUS) || defined(CONFIG_SND_BCM2708_SOC_HIFIBERRY_DACPLUS_MODULE)
+        bcm_register_device(&snd_rpi_hifiberry_dacplus_device);
+        i2c_register_board_info(1, snd_pcm512x_hbdacplus_i2c_devices, ARRAY_SIZE(snd_pcm512x_hbdacplus_i2c_devices));
+#endif
+
 #if defined(CONFIG_SND_BCM2708_SOC_HIFIBERRY_DIGI) || defined(CONFIG_SND_BCM2708_SOC_HIFIBERRY_DIGI_MODULE)
         bcm_register_device(&snd_hifiberry_digi_device);
         i2c_register_board_info(1, snd_wm8804_i2c_devices, ARRAY_SIZE(snd_wm8804_i2c_devices));
@@ -828,6 +898,12 @@ void __init bcm2708_init(void)
         bcm_register_device(&snd_rpi_dac_device);
         bcm_register_device(&snd_pcm1794a_codec_device);
 #endif
+
+#if defined(CONFIG_SND_BCM2708_SOC_IQAUDIO_DAC) || defined(CONFIG_SND_BCM2708_SOC_IQAUDIO_DAC_MODULE)
+        bcm_register_device(&snd_rpi_iqaudio_dac_device);
+        i2c_register_board_info(1, snd_pcm512x_i2c_devices, ARRAY_SIZE(snd_pcm512x_i2c_devices));
+#endif
+
 
 	for (i = 0; i < ARRAY_SIZE(amba_devs); i++) {
 		struct amba_device *d = amba_devs[i];
@@ -866,9 +942,13 @@ static int timer_set_next_event(unsigned long cycles,
 				struct clock_event_device *unused)
 {
 	unsigned long stc;
-
-	stc = readl(__io_address(ST_BASE + 0x04));
-	writel(stc + cycles, __io_address(ST_BASE + 0x18));	/* stc3 */
+	do {
+		stc = readl(__io_address(ST_BASE + 0x04));
+		/* We could take a FIQ here, which may push ST above STC3 */
+		writel(stc + cycles, __io_address(ST_BASE + 0x18));
+	} while ((signed long) cycles >= 0 &&
+				(signed long) (readl(__io_address(ST_BASE + 0x04)) - stc)
+				>= (signed long) cycles);
 	return 0;
 }
 
@@ -1009,3 +1089,8 @@ module_param(uart_clock, uint, 0644);
 module_param(disk_led_gpio, uint, 0644);
 module_param(disk_led_active_low, uint, 0644);
 module_param(reboot_part, uint, 0644);
+module_param(w1_gpio_pin, uint, 0644);
+module_param(w1_gpio_pullup, uint, 0644);
+module_param(bcm2835_mmc, uint, 0644);
+module_param(vc_i2c_override, bool, 0644);
+MODULE_PARM_DESC(vc_i2c_override, "Allow the use of VC's I2C peripheral.");

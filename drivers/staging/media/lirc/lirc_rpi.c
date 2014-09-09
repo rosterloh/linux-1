@@ -30,6 +30,7 @@
 #include <linux/sched.h>
 #include <linux/kernel.h>
 #include <linux/time.h>
+#include <linux/timex.h>
 #include <linux/string.h>
 #include <linux/delay.h>
 #include <linux/platform_device.h>
@@ -37,11 +38,12 @@
 #include <linux/spinlock.h>
 #include <media/lirc.h>
 #include <media/lirc_dev.h>
+#include <mach/gpio.h>
 #include <linux/gpio.h>
 
 #define LIRC_DRIVER_NAME "lirc_rpi"
 #define RBUF_LEN 256
-#define LIRC_TRANSMITTER_LATENCY 256
+#define LIRC_TRANSMITTER_LATENCY 50
 
 #ifndef MAX_UDELAY_MS
 #define MAX_UDELAY_US 5000
@@ -80,9 +82,6 @@ static long send_pulse(unsigned long length);
 static void send_space(long length);
 static void lirc_rpi_exit(void);
 
-int valid_gpio_pins[] = { 0, 1, 4, 8, 7, 9, 10, 11, 14, 15, 17, 18, 21, 22, 23,
-	24, 25 };
-
 static struct platform_device *lirc_rpi_dev;
 static struct timeval lasttv = { 0, 0 };
 static struct lirc_buffer rbuf;
@@ -107,19 +106,15 @@ static void safe_udelay(unsigned long usecs)
 static int init_timing_params(unsigned int new_duty_cycle,
 	unsigned int new_freq)
 {
-	/*
-	 * period, pulse/space width are kept with 8 binary places -
-	 * IE multiplied by 256.
-	 */
-	if (256 * 1000000L / new_freq * new_duty_cycle / 100 <=
+	if (1000 * 1000000L / new_freq * new_duty_cycle / 100 <=
 	    LIRC_TRANSMITTER_LATENCY)
 		return -EINVAL;
-	if (256 * 1000000L / new_freq * (100 - new_duty_cycle) / 100 <=
+	if (1000 * 1000000L / new_freq * (100 - new_duty_cycle) / 100 <=
 	    LIRC_TRANSMITTER_LATENCY)
 		return -EINVAL;
 	duty_cycle = new_duty_cycle;
 	freq = new_freq;
-	period = 256 * 1000000L / freq;
+	period = 1000 * 1000000L / freq;
 	pulse_width = period * duty_cycle / 100;
 	space_width = period - pulse_width;
 	dprintk("in init_timing_params, freq=%d pulse=%ld, "
@@ -130,11 +125,14 @@ static int init_timing_params(unsigned int new_duty_cycle,
 static long send_pulse_softcarrier(unsigned long length)
 {
 	int flag;
-	unsigned long actual, target, d;
+	unsigned long actual, target;
+	unsigned long actual_us, initial_us, target_us;
 
-	length <<= 8;
+	length *= 1000;
 
 	actual = 0; target = 0; flag = 0;
+	read_current_timer(&actual_us);
+
 	while (actual < length) {
 		if (flag) {
 			gpiochip->set(gpiochip, gpio_out_pin, invert);
@@ -143,17 +141,19 @@ static long send_pulse_softcarrier(unsigned long length)
 			gpiochip->set(gpiochip, gpio_out_pin, !invert);
 			target += pulse_width;
 		}
-		d = (target - actual -
-		     LIRC_TRANSMITTER_LATENCY + 128) >> 8;
+		initial_us = actual_us;	
+		target_us = actual_us + (target - actual) / 1000;
 		/*
 		 * Note - we've checked in ioctl that the pulse/space
 		 * widths are big enough so that d is > 0
 		 */
-		udelay(d);
-		actual += (d << 8) + LIRC_TRANSMITTER_LATENCY;
+		if  ((int)(target_us - actual_us) > 0)
+			udelay(target_us - actual_us);
+		read_current_timer(&actual_us);
+		actual += (actual_us - initial_us) * 1000;
 		flag = !flag;
 	}
-	return (actual-length) >> 8;
+	return (actual-length) / 1000;
 }
 
 static long send_pulse(unsigned long length)
@@ -597,24 +597,13 @@ static void lirc_rpi_exit(void)
 
 static int __init lirc_rpi_init_module(void)
 {
-	int result, i;
+	int result;
 
 	result = lirc_rpi_init();
 	if (result)
 		return result;
 
-	/* check if the module received valid gpio pin numbers */
-	result = 0;
-	if (gpio_in_pin != gpio_out_pin) {
-		for(i = 0; (i < ARRAY_SIZE(valid_gpio_pins)) && (result != 2); i++) {
-			if (gpio_in_pin == valid_gpio_pins[i] ||
-			   gpio_out_pin == valid_gpio_pins[i]) {
-				result++;
-			}
-		}
-	}
-
-	if (result != 2) {
+	if (gpio_in_pin >= BCM2708_NR_GPIOS || gpio_out_pin >= BCM2708_NR_GPIOS) {
 		result = -EINVAL;
 		printk(KERN_ERR LIRC_DRIVER_NAME
 		       ": invalid GPIO pin(s) specified!\n");
@@ -671,13 +660,11 @@ MODULE_LICENSE("GPL");
 
 module_param(gpio_out_pin, int, S_IRUGO);
 MODULE_PARM_DESC(gpio_out_pin, "GPIO output/transmitter pin number of the BCM"
-		 " processor. Valid pin numbers are: 0, 1, 4, 8, 7, 9, 10, 11,"
-		 " 14, 15, 17, 18, 21, 22, 23, 24, 25, default 17");
+		 " processor. (default 17");
 
 module_param(gpio_in_pin, int, S_IRUGO);
 MODULE_PARM_DESC(gpio_in_pin, "GPIO input pin number of the BCM processor."
-		 " Valid pin numbers are: 0, 1, 4, 8, 7, 9, 10, 11, 14, 15,"
-		 " 17, 18, 21, 22, 23, 24, 25, default 18");
+		 " (default 18");
 
 module_param(sense, int, S_IRUGO);
 MODULE_PARM_DESC(sense, "Override autodetection of IR receiver circuit"

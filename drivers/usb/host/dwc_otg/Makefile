@@ -12,22 +12,22 @@ ifeq ($(BUS_INTERFACE),)
         BUS_INTERFACE = -DPLATFORM_INTERFACE
 endif
 
-#EXTRA_CFLAGS	+= -DDEBUG
-#EXTRA_CFLAGS	+= -DDWC_OTG_DEBUGLEV=1 # reduce common debug msgs
+#ccflags-y	+= -DDEBUG
+#ccflags-y	+= -DDWC_OTG_DEBUGLEV=1 # reduce common debug msgs
 
 # Use one of the following flags to compile the software in host-only or
 # device-only mode.
-#EXTRA_CFLAGS        += -DDWC_HOST_ONLY
-#EXTRA_CFLAGS        += -DDWC_DEVICE_ONLY
+#ccflags-y        += -DDWC_HOST_ONLY
+#ccflags-y        += -DDWC_DEVICE_ONLY
 
-EXTRA_CFLAGS	+= -Dlinux -DDWC_HS_ELECT_TST
-#EXTRA_CFLAGS	+= -DDWC_EN_ISOC
-EXTRA_CFLAGS   	+= -I$(obj)/../dwc_common_port
-#EXTRA_CFLAGS   	+= -I$(PORTLIB)
-EXTRA_CFLAGS   	+= -DDWC_LINUX
-EXTRA_CFLAGS   	+= $(CFI)
-EXTRA_CFLAGS	+= $(BUS_INTERFACE)
-#EXTRA_CFLAGS	+= -DDWC_DEV_SRPCAP
+ccflags-y	+= -Dlinux -DDWC_HS_ELECT_TST
+#ccflags-y	+= -DDWC_EN_ISOC
+ccflags-y   	+= -I$(obj)/../dwc_common_port
+#ccflags-y   	+= -I$(PORTLIB)
+ccflags-y   	+= -DDWC_LINUX
+ccflags-y   	+= $(CFI)
+ccflags-y	+= $(BUS_INTERFACE)
+#ccflags-y	+= -DDWC_DEV_SRPCAP
 
 obj-$(CONFIG_USB_DWCOTG) += dwc_otg.o
 
@@ -36,7 +36,8 @@ dwc_otg-objs	+= dwc_otg_cil.o dwc_otg_cil_intr.o
 dwc_otg-objs	+= dwc_otg_pcd_linux.o dwc_otg_pcd.o dwc_otg_pcd_intr.o
 dwc_otg-objs	+= dwc_otg_hcd.o dwc_otg_hcd_linux.o dwc_otg_hcd_intr.o dwc_otg_hcd_queue.o dwc_otg_hcd_ddma.o
 dwc_otg-objs	+= dwc_otg_adp.o
-dwc_otg-objs	+= dwc_otg_mphi_fix.o
+dwc_otg-objs	+= dwc_otg_fiq_fsm.o
+dwc_otg-objs	+= dwc_otg_fiq_stub.o
 ifneq ($(CFI),)
 dwc_otg-objs	+= dwc_otg_cfi.o
 endif
@@ -45,7 +46,7 @@ kernrelwd := $(subst ., ,$(KERNELRELEASE))
 kernrel3 := $(word 1,$(kernrelwd)).$(word 2,$(kernrelwd)).$(word 3,$(kernrelwd))
 
 ifneq ($(kernrel3),2.6.20)
-EXTRA_CFLAGS += $(CPPFLAGS)
+ccflags-y += $(CPPFLAGS)
 endif
 
 else

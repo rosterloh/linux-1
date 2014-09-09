@@ -187,13 +187,11 @@
 #define FIQ_PENDING1          (FIQ_START+INTERRUPT_PENDING1)
 #define FIQ_PENDING2          (FIQ_START+INTERRUPT_PENDING2)
 
-#define GPIO_IRQ_START	      (HARD_IRQS + FIQ_IRQS)
-
 #define HARD_IRQS	      (64 + 21)
-#define FIQ_IRQS              (64 + 21)
+#define FIQ_IRQS        (64 + 21)
+#define GPIO_IRQ_START  (HARD_IRQS + FIQ_IRQS)
 #define GPIO_IRQS	      (32*5)
-
-#define NR_IRQS		      HARD_IRQS+FIQ_IRQS+GPIO_IRQS
-
+#define SPARE_IRQS		  (64)
+#define NR_IRQS		      (HARD_IRQS+FIQ_IRQS+GPIO_IRQS+SPARE_IRQS)
 
 #endif /* _BCM2708_IRQS_H_ */

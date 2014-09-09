@@ -43,9 +43,7 @@ static struct amba_device name##_device = {			\
 		.end	= (base##_BASE) + SZ_4K - 1,\
 		.flags	= IORESOURCE_MEM,			\
 	},							\
-	.dma_mask	= ~0,					\
 	.irq		= base##_IRQ,				\
-	/* .dma		= base##_DMA,*/				\
 }
 
 #endif

@@ -109,6 +109,8 @@ config I2C_I801
 	    Avoton (SOC)
 	    Wellsburg (PCH)
 	    Coleto Creek (PCH)
+	    Wildcat Point-LP (PCH)
+	    BayTrail (SOC)
 
 	  This driver can also be built as a module.  If so, the module
 	  will be called i2c-i801.
@@ -355,15 +357,15 @@ config I2C_BCM2708
 	  with I2C/TWI/SMBus.
 
 config I2C_BCM2708_BAUDRATE
-    prompt "BCM2708 I2C baudrate"
+	prompt "BCM2708 I2C baudrate"
 	depends on I2C_BCM2708
-    int
-    default 100000
-    help
-      Set the I2C baudrate. This will alter the default value. A
-      different baudrate can be set by using a module parameter as well. If
-      no parameter is provided when loading, this is the value that will be
-      used.
+	int
+	default 100000
+	help
+	  Set the I2C baudrate. This will alter the default value. A
+	  different baudrate can be set by using a module parameter as well. If
+	  no parameter is provided when loading, this is the value that will be
+	  used.
 
 config I2C_BLACKFIN_TWI
 	tristate "Blackfin TWI I2C support"
@@ -395,7 +397,7 @@ config I2C_CBUS_GPIO
 
 config I2C_CPM
 	tristate "Freescale CPM1 or CPM2 (MPC8xx/826x)"
-	depends on (CPM1 || CPM2) && OF_I2C
+	depends on CPM1 || CPM2
 	help
 	  This supports the use of the I2C interface on Freescale
 	  processors with CPM1 or CPM2.
